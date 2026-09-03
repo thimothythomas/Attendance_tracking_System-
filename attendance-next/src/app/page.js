@@ -40,80 +40,78 @@ function App() {
         const parsedData = []
         let currentDate = null
 
-        // Detect column shift (SheetJS sometimes strips leading empty columns)
-        let nameIndex = 3 // Default based on original python script
-        for (let i = 0; i < Math.min(data.length, 20); i++) {
-          const row = data[i]
-          if (!row) continue
-          const foundIndex = row.findIndex(c => String(c).trim() === 'Name')
-          if (foundIndex !== -1) {
-            nameIndex = foundIndex
-            break
-          }
+        // Find the header row to map column indices dynamically
+        const headerIdx = data.findIndex(row => row && row.some(c => String(c).trim() === 'E. Code'))
+        if (headerIdx === -1) {
+          setDebugData(data.slice(0, 30))
+          alert('Could not find the table header (E. Code) in this file. Please check the format.')
+          return
         }
-        
-        const offset = nameIndex - 3
-        const col = (index) => Math.max(0, index + offset)
 
-        for (let i = 0; i < data.length; i++) {
+        const headerRow = data[headerIdx]
+        const colMap = {}
+        headerRow.forEach((c, i) => {
+          if (!c) return
+          const colName = String(c).trim().toLowerCase()
+          if (colName.includes('name')) colMap.name = i
+          else if (colName.includes('e. code')) colMap.emp_id = i
+          else if (colName.includes('shift')) colMap.shift = i
+          else if (colName.includes('intime')) colMap.in_time = i
+          else if (colName.includes('outtime')) colMap.out_time = i
+          else if (colName.includes('work dur')) colMap.work_duration = i
+          else if (colName === 'ot') colMap.overtime = i
+          else if (colName.includes('tot. dur') || colName.includes('tot.  dur')) colMap.total_duration = i
+          else if (colName.includes('status')) colMap.status = i
+          else if (colName.includes('late')) colMap.late_by = i
+          else if (colName.includes('early')) colMap.early_going_by = i
+          else if (colName.includes('punch')) colMap.punch_records = i
+        })
+
+        for (let i = headerIdx + 1; i < data.length; i++) {
           const row = data[i]
           if (!row || row.length === 0) continue
 
           // 1. Try to find a date in this row
-          let foundDate = null;
+          let foundDate = null
           for (let c of row) {
-             if (!c) continue;
-             const s = String(c).trim();
-             const parts = s.split('-');
+             if (!c) continue
+             const s = String(c).trim()
+             const parts = s.split('-')
              if (parts.length === 3 && (s.includes('202') || s.includes('-26'))) {
-                 foundDate = s;
-                 break;
+                 foundDate = s
+                 break
              }
           }
           
           if (foundDate) {
-             currentDate = foundDate;
-             // If this row also has "Attendance Date", it's definitely just a header row
-             if (row.some(c => String(c).includes('Attendance Date'))) {
-                 continue;
-             }
+             currentDate = foundDate
+             continue
           }
 
-          // 2. Try to find the Status column in this row (it anchors everything else)
-          const statusIndex = row.findIndex(c => {
-             if (!c) return false;
-             const s = String(c).trim();
-             return s === 'Present' || s === 'Absent' || s.includes('Leave') || s.includes('Holiday') || s.includes('WeeklyOff') || s.includes('Absent No');
-          });
-
-          if (statusIndex !== -1) {
-              // We found an attendance record! 
-              // In the original script, Status is at index 17. 
-              // We use this to calculate the exact shift of all other columns.
-              const baseIndex = statusIndex - 17;
-              
-              const name = String(row[baseIndex + 3] || '').trim();
-              const emp_id = String(row[baseIndex + 2] || '').trim();
-              const status = String(row[statusIndex]).trim();
+          // 2. Parse employee row using the column map
+          if (colMap.name !== undefined && colMap.status !== undefined) {
+              const name = String(row[colMap.name] || '').trim()
+              const emp_id = String(row[colMap.emp_id] || '').trim()
+              const status = String(row[colMap.status] || '').trim()
               
               if (name && name !== 'Name' && name !== 'Company:' && emp_id) {
                   parsedData.push({
                       date: currentDate,
                       emp_id: emp_id,
                       name: name,
-                      shift: row[baseIndex + 5] || null,
-                      s_in_time: row[baseIndex + 6] || null,
-                      s_out_time: row[baseIndex + 8] || null,
-                      in_time: row[baseIndex + 10] || null,
-                      out_time: row[baseIndex + 11] || null,
-                      work_duration: row[baseIndex + 12] || null,
-                      overtime: row[baseIndex + 13] || null,
-                      total_duration: row[baseIndex + 14] || null,
-                      late_by: row[baseIndex + 15] || null,
-                      early_going_by: row[baseIndex + 16] || null,
+                      shift: colMap.shift !== undefined ? row[colMap.shift] : null,
+                      s_in_time: null, // Basic report doesn't have shift in/out time
+                      s_out_time: null,
+                      in_time: colMap.in_time !== undefined ? row[colMap.in_time] : null,
+                      out_time: colMap.out_time !== undefined ? row[colMap.out_time] : null,
+                      work_duration: colMap.work_duration !== undefined ? row[colMap.work_duration] : null,
+                      overtime: colMap.overtime !== undefined ? row[colMap.overtime] : null,
+                      total_duration: colMap.total_duration !== undefined ? row[colMap.total_duration] : null,
+                      late_by: colMap.late_by !== undefined ? row[colMap.late_by] : null,
+                      early_going_by: colMap.early_going_by !== undefined ? row[colMap.early_going_by] : null,
                       status: status,
-                      punch_records: row[baseIndex + 19] || null
-                  });
+                      punch_records: colMap.punch_records !== undefined ? row[colMap.punch_records] : null
+                  })
               }
           }
         }
