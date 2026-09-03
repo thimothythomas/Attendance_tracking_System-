@@ -59,45 +59,62 @@ function App() {
           const row = data[i]
           if (!row || row.length === 0) continue
 
-          const val5 = String(row[col(5)] || '').trim()
-          let isDateRow = false
-          
-          if (val5) {
-             const parts = val5.split('-')
-             if (parts.length === 3 && (val5.includes('202') || val5.includes('-26') || /^\d/.test(val5))) {
-                 isDateRow = true
+          // 1. Try to find a date in this row
+          let foundDate = null;
+          for (let c of row) {
+             if (!c) continue;
+             const s = String(c).trim();
+             const parts = s.split('-');
+             if (parts.length === 3 && (s.includes('202') || s.includes('-26'))) {
+                 foundDate = s;
+                 break;
              }
           }
-          if (isDateRow) {
-             currentDate = val5
-             continue
-          } else if (row[col(1)] && String(row[col(1)]).includes('Attendance Date') && val5) {
-             currentDate = val5
-             continue
+          
+          if (foundDate) {
+             currentDate = foundDate;
+             // If this row also has "Attendance Date", it's definitely just a header row
+             if (row.some(c => String(c).includes('Attendance Date'))) {
+                 continue;
+             }
           }
 
-          const name = row[col(3)]
-          const status = row[col(17)]
-          const emp_id = row[col(2)]
+          // 2. Try to find the Status column in this row (it anchors everything else)
+          const statusIndex = row.findIndex(c => {
+             if (!c) return false;
+             const s = String(c).trim();
+             return s === 'Present' || s === 'Absent' || s.includes('Leave') || s.includes('Holiday') || s.includes('WeeklyOff') || s.includes('Absent No');
+          });
 
-          if (name && status && String(name).trim() !== 'Name' && String(name).trim() !== 'Company:') {
-            parsedData.push({
-              date: currentDate,
-              emp_id: emp_id,
-              name: String(name).trim(),
-              shift: row[col(5)] || null,
-              s_in_time: row[col(6)] || null,
-              s_out_time: row[col(8)] || null,
-              in_time: row[col(10)] || null,
-              out_time: row[col(11)] || null,
-              work_duration: row[col(12)] || null,
-              overtime: row[col(13)] || null,
-              total_duration: row[col(14)] || null,
-              late_by: row[col(15)] || null,
-              early_going_by: row[col(16)] || null,
-              status: typeof status === 'string' ? status.trim() : status,
-              punch_records: row[col(19)] || null
-            })
+          if (statusIndex !== -1) {
+              // We found an attendance record! 
+              // In the original script, Status is at index 17. 
+              // We use this to calculate the exact shift of all other columns.
+              const baseIndex = statusIndex - 17;
+              
+              const name = String(row[baseIndex + 3] || '').trim();
+              const emp_id = String(row[baseIndex + 2] || '').trim();
+              const status = String(row[statusIndex]).trim();
+              
+              if (name && name !== 'Name' && name !== 'Company:' && emp_id) {
+                  parsedData.push({
+                      date: currentDate,
+                      emp_id: emp_id,
+                      name: name,
+                      shift: row[baseIndex + 5] || null,
+                      s_in_time: row[baseIndex + 6] || null,
+                      s_out_time: row[baseIndex + 8] || null,
+                      in_time: row[baseIndex + 10] || null,
+                      out_time: row[baseIndex + 11] || null,
+                      work_duration: row[baseIndex + 12] || null,
+                      overtime: row[baseIndex + 13] || null,
+                      total_duration: row[baseIndex + 14] || null,
+                      late_by: row[baseIndex + 15] || null,
+                      early_going_by: row[baseIndex + 16] || null,
+                      status: status,
+                      punch_records: row[baseIndex + 19] || null
+                  });
+              }
           }
         }
         
