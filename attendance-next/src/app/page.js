@@ -100,10 +100,15 @@ function App() {
             })
           }
         }
-        
         if (parsedData.length === 0) {
-          setDebugData(data.slice(0, 30))
-          alert('Could not find any attendance records in this file. Please check the format. Scroll down to see debug info.')
+          const debugInfo = {
+            sheetNames: workbook.SheetNames,
+            firstSheetName: sheetName,
+            totalRows: data.length,
+            firstRow: data.length > 0 ? data[0] : 'No data',
+            first5Rows: data.slice(0, 5)
+          };
+          alert('Could not find records. Debug Info:\n\n' + JSON.stringify(debugInfo, null, 2).substring(0, 500));
         } else {
           setDebugData(null)
           setRawData(parsedData)
