@@ -38,11 +38,26 @@ function App() {
         const parsedData = []
         let currentDate = null
 
+        // Detect column shift (SheetJS sometimes strips leading empty columns)
+        let nameIndex = 3 // Default based on original python script
+        for (let i = 0; i < Math.min(data.length, 20); i++) {
+          const row = data[i]
+          if (!row) continue
+          const foundIndex = row.findIndex(c => String(c).trim() === 'Name')
+          if (foundIndex !== -1) {
+            nameIndex = foundIndex
+            break
+          }
+        }
+        
+        const offset = nameIndex - 3
+        const col = (index) => Math.max(0, index + offset)
+
         for (let i = 0; i < data.length; i++) {
           const row = data[i]
           if (!row || row.length === 0) continue
 
-          const val5 = String(row[5] || '').trim()
+          const val5 = String(row[col(5)] || '').trim()
           let isDateRow = false
           
           if (val5) {
@@ -54,32 +69,32 @@ function App() {
           if (isDateRow) {
              currentDate = val5
              continue
-          } else if (row[1] && String(row[1]).includes('Attendance Date') && val5) {
+          } else if (row[col(1)] && String(row[col(1)]).includes('Attendance Date') && val5) {
              currentDate = val5
              continue
           }
 
-          const name = row[3]
-          const status = row[17]
-          const emp_id = row[2]
+          const name = row[col(3)]
+          const status = row[col(17)]
+          const emp_id = row[col(2)]
 
-          if (name && status && name !== 'Name' && name !== 'Company:') {
+          if (name && status && String(name).trim() !== 'Name' && String(name).trim() !== 'Company:') {
             parsedData.push({
               date: currentDate,
               emp_id: emp_id,
               name: String(name).trim(),
-              shift: row[5] || null,
-              s_in_time: row[6] || null,
-              s_out_time: row[8] || null,
-              in_time: row[10] || null,
-              out_time: row[11] || null,
-              work_duration: row[12] || null,
-              overtime: row[13] || null,
-              total_duration: row[14] || null,
-              late_by: row[15] || null,
-              early_going_by: row[16] || null,
+              shift: row[col(5)] || null,
+              s_in_time: row[col(6)] || null,
+              s_out_time: row[col(8)] || null,
+              in_time: row[col(10)] || null,
+              out_time: row[col(11)] || null,
+              work_duration: row[col(12)] || null,
+              overtime: row[col(13)] || null,
+              total_duration: row[col(14)] || null,
+              late_by: row[col(15)] || null,
+              early_going_by: row[col(16)] || null,
               status: typeof status === 'string' ? status.trim() : status,
-              punch_records: row[19] || null
+              punch_records: row[col(19)] || null
             })
           }
         }
