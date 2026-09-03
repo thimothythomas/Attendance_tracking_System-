@@ -12,6 +12,8 @@ function App() {
   const [rawData, setRawData] = useState([])
   const fileInputRef = useRef(null)
 
+  const [debugData, setDebugData] = useState(null)
+
   const parseDate = (dateStr) => {
     if (!dateStr) return new Date()
     const months = { 'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5, 'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11 }
@@ -100,8 +102,10 @@ function App() {
         }
         
         if (parsedData.length === 0) {
-          alert('Could not find any attendance records in this file. Please check the format.')
+          setDebugData(data.slice(0, 30))
+          alert('Could not find any attendance records in this file. Please check the format. Scroll down to see debug info.')
         } else {
+          setDebugData(null)
           setRawData(parsedData)
         }
       } catch (err) {
