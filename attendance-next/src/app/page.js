@@ -100,15 +100,10 @@ function App() {
             })
           }
         }
+        
         if (parsedData.length === 0) {
-          const debugInfo = {
-            sheetNames: workbook.SheetNames,
-            firstSheetName: sheetName,
-            totalRows: data.length,
-            firstRow: data.length > 0 ? data[0] : 'No data',
-            first5Rows: data.slice(0, 5)
-          };
-          alert('Could not find records. Debug Info:\n\n' + JSON.stringify(debugInfo, null, 2).substring(0, 500));
+          setDebugData(data.slice(0, 30))
+          alert('Could not find any attendance records in this file. Please check the format. Scroll down to see debug info.')
         } else {
           setDebugData(null)
           setRawData(parsedData)
@@ -597,6 +592,15 @@ function App() {
             >
               <Upload size={18} /> Select Excel File
             </button>
+
+            {debugData && (
+              <div style={{ marginTop: '2rem', padding: '1rem', background: '#f1f5f9', border: '2px solid red', borderRadius: '8px', overflowX: 'auto', maxWidth: '80vw' }}>
+                <h3 style={{ color: 'red', marginBottom: '1rem' }}>DEBUG INFORMATION (Please take a screenshot of this)</h3>
+                <pre style={{ fontSize: '11px', textAlign: 'left', color: 'black' }}>
+                  {JSON.stringify(debugData, null, 2)}
+                </pre>
+              </div>
+            )}
           </div>
         ) : activeTab === 'dashboard' ? renderDashboard() : activeTab === 'reports' ? renderReports() : null}
 
