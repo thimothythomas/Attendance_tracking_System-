@@ -612,10 +612,28 @@ function App() {
 
             {debugData && (
               <div style={{ marginTop: '2rem', padding: '1rem', background: '#f1f5f9', border: '2px solid red', borderRadius: '8px', overflowX: 'auto', maxWidth: '80vw' }}>
-                <h3 style={{ color: 'red', marginBottom: '1rem' }}>DEBUG INFORMATION (Please take a screenshot of this)</h3>
-                <pre style={{ fontSize: '11px', textAlign: 'left', color: 'black' }}>
-                  {JSON.stringify(debugData, null, 2)}
-                </pre>
+                <h3 style={{ color: 'red', marginBottom: '1rem' }}>DEBUG INFORMATION</h3>
+                <p style={{ color: 'black', marginBottom: '1rem', fontSize: '14px' }}>
+                  Please click the button below to download the raw data, and upload the downloaded <b>raw_excel_data.json</b> file into our chat!
+                </p>
+                <button
+                  onClick={() => {
+                    const blob = new Blob([JSON.stringify(debugData, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'raw_excel_data.json';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                  }}
+                  style={{
+                    padding: '0.75rem 1.5rem', backgroundColor: '#ef4444', color: 'white',
+                    border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold'
+                  }}
+                >
+                  Download Raw Excel Data
+                </button>
               </div>
             )}
           </div>
