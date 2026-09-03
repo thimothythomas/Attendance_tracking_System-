@@ -33,18 +33,30 @@ function App() {
         const workbook = XLSX.read(arrayBuffer, { type: 'array' })
         const sheetName = workbook.SheetNames[0]
         const sheet = workbook.Sheets[sheetName]
-        const data = XLSX.utils.sheet_to_json(sheet, { header: 1 })
+        const data = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })
 
         const parsedData = []
         let currentDate = null
 
         for (let i = 0; i < data.length; i++) {
           const row = data[i]
-          if (!row) continue
+          if (!row || row.length === 0) continue
 
-          if (row[1] === 'Attendance Date :' && row[5]) {
-            currentDate = row[5]
-            continue
+          const val5 = String(row[5] || '').trim()
+          let isDateRow = false
+          
+          if (val5) {
+             const parts = val5.split('-')
+             if (parts.length === 3 && (val5.includes('202') || val5.includes('-26') || /^\d/.test(val5))) {
+                 isDateRow = true
+             }
+          }
+          if (isDateRow) {
+             currentDate = val5
+             continue
+          } else if (row[1] && String(row[1]).includes('Attendance Date') && val5) {
+             currentDate = val5
+             continue
           }
 
           const name = row[3]
@@ -55,7 +67,7 @@ function App() {
             parsedData.push({
               date: currentDate,
               emp_id: emp_id,
-              name: name,
+              name: String(name).trim(),
               shift: row[5] || null,
               s_in_time: row[6] || null,
               s_out_time: row[8] || null,
@@ -71,10 +83,15 @@ function App() {
             })
           }
         }
-        setRawData(parsedData)
+        
+        if (parsedData.length === 0) {
+          alert('Could not find any attendance records in this file. Please check the format.')
+        } else {
+          setRawData(parsedData)
+        }
       } catch (err) {
         console.error('Failed to parse excel:', err)
-        alert('Failed to parse the file. Ensure it is the correct Attendance Report format.')
+        alert('Failed to parse the file. Ensure it is a valid Excel file.')
       } finally {
         e.target.value = ''
       }
