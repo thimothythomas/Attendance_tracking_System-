@@ -398,7 +398,7 @@ function App() {
     const punctuality = new Map()
     rawData.forEach(record => {
       if (!punctuality.has(record.emp_id)) {
-        punctuality.set(record.emp_id, { name: record.name, lateCount: 0, earlyCount: 0 })
+        punctuality.set(record.emp_id, { emp_id: record.emp_id, name: record.name, lateCount: 0, earlyCount: 0 })
       }
       const stat = punctuality.get(record.emp_id)
       if (record.late_by && record.late_by !== '00:00' && record.late_by !== '-') stat.lateCount++
@@ -410,7 +410,7 @@ function App() {
     const overtimeStats = new Map()
     rawData.forEach(record => {
       if (!overtimeStats.has(record.emp_id)) {
-        overtimeStats.set(record.emp_id, { name: record.name, otMinutes: 0 })
+        overtimeStats.set(record.emp_id, { emp_id: record.emp_id, name: record.name, otMinutes: 0 })
       }
       const stat = overtimeStats.get(record.emp_id)
       if (record.overtime && record.overtime !== '00:00' && record.overtime !== '-') {
@@ -468,7 +468,18 @@ function App() {
                 </thead>
                 <tbody>
                   {lateLeaders.length > 0 ? lateLeaders.map(l => (
-                    <tr key={l.name}>
+                    <tr 
+                      key={l.name} 
+                      className="clickable-row" 
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => {
+                        const emp = employeeSummaries.find(e => e.emp_id === l.emp_id)
+                        if (emp) {
+                          setSelectedEmployee(emp)
+                          setStatusFilter('Late')
+                        }
+                      }}
+                    >
                       <td className="emp-name"><strong>{l.name}</strong></td>
                       <td className="text-danger font-medium" style={{ fontSize: '1.1rem' }}>{l.lateCount}</td>
                     </tr>
@@ -490,7 +501,18 @@ function App() {
                 </thead>
                 <tbody>
                   {otLeaders.length > 0 ? otLeaders.map(o => (
-                    <tr key={o.name}>
+                    <tr 
+                      key={o.name} 
+                      className="clickable-row" 
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => {
+                        const emp = employeeSummaries.find(e => e.emp_id === o.emp_id)
+                        if (emp) {
+                          setSelectedEmployee(emp)
+                          setStatusFilter('Overtime')
+                        }
+                      }}
+                    >
                       <td className="emp-name"><strong>{o.name}</strong></td>
                       <td className="text-success font-medium" style={{ fontSize: '1.1rem' }}>{(o.otMinutes / 60).toFixed(1)}h</td>
                     </tr>
@@ -704,6 +726,8 @@ function App() {
                     <option value="All">Show All Days</option>
                     <option value="Present">Present Only</option>
                     <option value="Absent">Absent Only</option>
+                    <option value="Late">Late Arrivals</option>
+                    <option value="Overtime">Overtime</option>
                   </select>
 
                   <button
@@ -739,7 +763,12 @@ function App() {
                   </thead>
                   <tbody>
                     {selectedEmployee.records
-                      .filter(record => statusFilter === 'All' || record.status === statusFilter)
+                      .filter(record => {
+                        if (statusFilter === 'All') return true;
+                        if (statusFilter === 'Late') return record.late_by && record.late_by !== '00:00' && record.late_by !== '-';
+                        if (statusFilter === 'Overtime') return record.overtime && record.overtime !== '00:00' && record.overtime !== '-';
+                        return record.status === statusFilter;
+                      })
                       .map((record, idx) => (
                         <tr key={`${record.date}-${idx}`}>
                           <td className="font-medium whitespace-nowrap">{record.date}</td>
