@@ -48,6 +48,20 @@ function App() {
           return
         }
 
+        // Pre-scan for the initial date before or on the header row
+        for (let i = 0; i <= headerIdx; i++) {
+          const row = data[i]
+          if (!row) continue
+          for (let c of row) {
+             if (!c) continue
+             const s = String(c).trim()
+             const parts = s.split('-')
+             if (parts.length === 3 && (s.includes('202') || s.includes('-26'))) {
+                 currentDate = s
+             }
+          }
+        }
+
         const headerRow = data[headerIdx]
         const colMap = {}
         headerRow.forEach((c, i) => {
