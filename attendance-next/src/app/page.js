@@ -493,9 +493,9 @@ function App() {
   return (
     <div className="app-container">
       <aside className="sidebar">
-        <div className="sidebar-header">
-          <div className="logo-icon">INXL</div>
-          <h2>Digital</h2>
+        <div className="sidebar-header" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <div className="logo-icon" style={{ fontSize: '1.5rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>INXL</div>
+          <h2 style={{ fontSize: '1.5rem', margin: 0 }}>DIGITAL</h2>
         </div>
         
         <nav className="sidebar-nav">
