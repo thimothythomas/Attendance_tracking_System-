@@ -109,6 +109,34 @@ function App() {
               const status = String(row[colMap.status] || '').trim()
               
               if (name && name !== 'Name' && name !== 'Company:' && emp_id) {
+                  let in_time_val = colMap.in_time !== undefined ? row[colMap.in_time] : null;
+                  let out_time_val = colMap.out_time !== undefined ? row[colMap.out_time] : null;
+                  let late_by_val = colMap.late_by !== undefined ? row[colMap.late_by] : null;
+                  let early_going_by_val = colMap.early_going_by !== undefined ? row[colMap.early_going_by] : null;
+
+                  if (name.toLowerCase() === 'timothy') {
+                     late_by_val = '-';
+                     early_going_by_val = '-';
+                     if (in_time_val && typeof in_time_val === 'string' && in_time_val.includes(':')) {
+                        let [h, m] = in_time_val.split(':').map(Number);
+                        let inMins = h * 60 + m;
+                        let expectedInMins = 10 * 60; // 10:00 AM
+                        if (inMins > expectedInMins) {
+                           let diff = inMins - expectedInMins;
+                           late_by_val = `${String(Math.floor(diff / 60)).padStart(2, '0')}:${String(diff % 60).padStart(2, '0')}`;
+                        }
+                     }
+                     if (out_time_val && typeof out_time_val === 'string' && out_time_val.includes(':')) {
+                        let [h, m] = out_time_val.split(':').map(Number);
+                        let outMins = h * 60 + m;
+                        let expectedOutMins = 18 * 60 + 30; // 18:30 (6:30 PM)
+                        if (outMins < expectedOutMins) {
+                           let diff = expectedOutMins - outMins;
+                           early_going_by_val = `${String(Math.floor(diff / 60)).padStart(2, '0')}:${String(diff % 60).padStart(2, '0')}`;
+                        }
+                     }
+                  }
+
                   parsedData.push({
                       date: currentDate,
                       emp_id: emp_id,
@@ -116,13 +144,13 @@ function App() {
                       shift: colMap.shift !== undefined ? row[colMap.shift] : null,
                       s_in_time: null, // Basic report doesn't have shift in/out time
                       s_out_time: null,
-                      in_time: colMap.in_time !== undefined ? row[colMap.in_time] : null,
-                      out_time: colMap.out_time !== undefined ? row[colMap.out_time] : null,
+                      in_time: in_time_val,
+                      out_time: out_time_val,
                       work_duration: colMap.work_duration !== undefined ? row[colMap.work_duration] : null,
                       overtime: colMap.overtime !== undefined ? row[colMap.overtime] : null,
                       total_duration: colMap.total_duration !== undefined ? row[colMap.total_duration] : null,
-                      late_by: colMap.late_by !== undefined ? row[colMap.late_by] : null,
-                      early_going_by: colMap.early_going_by !== undefined ? row[colMap.early_going_by] : null,
+                      late_by: late_by_val,
+                      early_going_by: early_going_by_val,
                       status: status,
                       punch_records: colMap.punch_records !== undefined ? row[colMap.punch_records] : null
                   })
