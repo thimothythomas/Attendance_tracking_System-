@@ -311,14 +311,13 @@ function App() {
           </div>
         </div>
         <div className="stat-card">
-          <div className="stat-icon check-icon"><CheckCircle size={24} /></div>
+          <div className="stat-icon check-icon"><Calendar size={24} /></div>
           <div className="stat-details">
-            <h3>Overall Attendance Rate</h3>
+            <h3>Total Working Days</h3>
             <p className="stat-value">
               {(() => {
-                const totalPresent = filteredEmployees.reduce((sum, emp) => sum + emp.present, 0)
-                const totalDays = filteredEmployees.reduce((sum, emp) => sum + emp.totalDays, 0)
-                return totalDays > 0 ? Math.round((totalPresent / totalDays) * 100) + '%' : '0%'
+                const totalWorkingDays = filteredEmployees.length > 0 ? Math.max(...filteredEmployees.map(emp => emp.totalDays)) : 0;
+                return totalWorkingDays;
               })()}
             </p>
           </div>
@@ -326,12 +325,12 @@ function App() {
         <div className="stat-card">
           <div className="stat-icon x-icon"><XCircle size={24} /></div>
           <div className="stat-details">
-            <h3>Absenteeism Rate</h3>
+            <h3>Absence Ratio</h3>
             <p className="stat-value">
               {(() => {
-                const totalAbsent = filteredEmployees.reduce((sum, emp) => sum + emp.absent, 0)
-                const totalDays = filteredEmployees.reduce((sum, emp) => sum + emp.totalDays, 0)
-                return totalDays > 0 ? Math.round((totalAbsent / totalDays) * 100) + '%' : '0%'
+                const totalAbsent = filteredEmployees.reduce((sum, emp) => sum + emp.absent, 0);
+                const totalDays = filteredEmployees.reduce((sum, emp) => sum + emp.totalDays, 0);
+                return totalDays > 0 ? Math.round((totalAbsent / totalDays) * 100) + '%' : '0%';
               })()}
             </p>
           </div>
