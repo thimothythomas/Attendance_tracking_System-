@@ -554,12 +554,26 @@ function App() {
     )
   }
 
+  const dateRange = useMemo(() => {
+    if (!rawData || rawData.length === 0) return null;
+    let minDate = null;
+    let maxDate = null;
+    rawData.forEach(record => {
+      const d = parseDate(record.date);
+      if (!minDate || d < minDate) minDate = d;
+      if (!maxDate || d > maxDate) maxDate = d;
+    });
+    if (!minDate || !maxDate) return null;
+    
+    const options = { year: 'numeric', month: 'short', day: 'numeric' };
+    return `${minDate.toLocaleDateString(undefined, options)} - ${maxDate.toLocaleDateString(undefined, options)}`;
+  }, [rawData]);
+
   return (
     <div className="app-container">
       <aside className="sidebar">
-        <div className="sidebar-header" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <div className="logo-icon" style={{ fontSize: '1.5rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>INXL</div>
-          <h2 style={{ fontSize: '1.5rem', margin: 0 }}>DIGITAL</h2>
+        <div className="sidebar-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0.5rem 0 1.5rem 0' }}>
+          <img src="https://i0.wp.com/inxldigital.com/wp-content/uploads/2021/04/cropped-inXL-LOGO-1.jpeg?resize=300%2C100&ssl=1" alt="INXL Digital Logo" style={{ maxWidth: '80%', height: 'auto', maxHeight: '50px' }} />
         </div>
         
         <nav className="sidebar-nav">
@@ -600,7 +614,9 @@ function App() {
         <header className="top-bar">
           <div>
             <h1>{activeTab === 'dashboard' ? 'Attendance Dashboard' : activeTab === 'reports' ? 'Attendance Reports' : 'Settings'}</h1>
-            <p className="subtitle">Overview of employee attendance and metrics</p>
+            <p className="subtitle">
+              {dateRange ? <span style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '1.05rem' }}>Report Period: {dateRange}</span> : 'Overview of employee attendance and metrics'}
+            </p>
           </div>
           
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
