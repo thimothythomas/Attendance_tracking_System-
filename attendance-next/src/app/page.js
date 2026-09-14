@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef } from 'react'
-import { Users, CheckCircle, XCircle, Calendar, Search, X, LayoutDashboard, FileText, Settings, LogOut, Download, Upload } from 'lucide-react'
+import { Users, CheckCircle, XCircle, Calendar, Search, X, LayoutDashboard, FileText, Settings, LogOut, Download, Upload, Lock, Eye, EyeOff } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 function App() {
@@ -13,6 +13,11 @@ function App() {
   const fileInputRef = useRef(null)
 
   const [debugData, setDebugData] = useState(null)
+  const [isAuthenticated, setIsAuthenticated] = useState(true)
+  const [loginError, setLoginError] = useState('')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
 
   const parseDate = (dateStr) => {
     if (!dateStr) return new Date()
@@ -113,29 +118,6 @@ function App() {
                   let out_time_val = colMap.out_time !== undefined ? row[colMap.out_time] : null;
                   let late_by_val = colMap.late_by !== undefined ? row[colMap.late_by] : null;
                   let early_going_by_val = colMap.early_going_by !== undefined ? row[colMap.early_going_by] : null;
-
-                  if (name.toLowerCase() === 'timothy') {
-                     late_by_val = '-';
-                     early_going_by_val = '-';
-                     if (in_time_val && typeof in_time_val === 'string' && in_time_val.includes(':')) {
-                        let [h, m] = in_time_val.split(':').map(Number);
-                        let inMins = h * 60 + m;
-                        let expectedInMins = 10 * 60; // 10:00 AM
-                        if (inMins > expectedInMins) {
-                           let diff = inMins - expectedInMins;
-                           late_by_val = `${String(Math.floor(diff / 60)).padStart(2, '0')}:${String(diff % 60).padStart(2, '0')}`;
-                        }
-                     }
-                     if (out_time_val && typeof out_time_val === 'string' && out_time_val.includes(':')) {
-                        let [h, m] = out_time_val.split(':').map(Number);
-                        let outMins = h * 60 + m;
-                        let expectedOutMins = 18 * 60 + 30; // 18:30 (6:30 PM)
-                        if (outMins < expectedOutMins) {
-                           let diff = expectedOutMins - outMins;
-                           early_going_by_val = `${String(Math.floor(diff / 60)).padStart(2, '0')}:${String(diff % 60).padStart(2, '0')}`;
-                        }
-                     }
-                  }
 
                   parsedData.push({
                       date: currentDate,
@@ -568,6 +550,81 @@ function App() {
     return `${minDate.toLocaleDateString(undefined, options)} - ${maxDate.toLocaleDateString(undefined, options)}`;
   }, [rawData]);
 
+  const handleLogin = (e) => {
+    e.preventDefault();
+    if (username === 'admin' && password === 'password') {
+      setIsAuthenticated(true);
+      setLoginError('');
+    } else {
+      setLoginError('Invalid credentials');
+    }
+  }
+
+  const renderLogin = () => (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', backgroundColor: '#f3f4f6' }}>
+      <div style={{ backgroundColor: 'white', padding: '2.5rem', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)', width: '100%', maxWidth: '400px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <img src="https://i0.wp.com/inxldigital.com/wp-content/uploads/2021/04/cropped-inXL-LOGO-1.jpeg?resize=300%2C100&ssl=1" alt="INXL Digital Logo" style={{ maxWidth: '80%', height: 'auto', marginBottom: '2rem' }} />
+        
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#e0e7ff', color: '#4f46e5', width: '48px', height: '48px', borderRadius: '50%', marginBottom: '1.5rem' }}>
+          <Lock size={24} />
+        </div>
+        
+        <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#111827', marginBottom: '0.5rem', textAlign: 'center' }}>Welcome Back</h2>
+        <p style={{ color: '#6b7280', marginBottom: '2rem', textAlign: 'center', fontSize: '0.95rem' }}>Please sign in to access the dashboard</p>
+        
+        {loginError && (
+          <div style={{ backgroundColor: '#fee2e2', color: '#b91c1c', padding: '0.75rem', borderRadius: '6px', marginBottom: '1.5rem', width: '100%', fontSize: '0.9rem', textAlign: 'center' }}>
+            {loginError}
+          </div>
+        )}
+        
+        <form onSubmit={handleLogin} style={{ width: '100%' }}>
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', color: '#374151', fontSize: '0.9rem', fontWeight: '500', marginBottom: '0.5rem' }}>Username</label>
+            <input 
+              type="text" 
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              style={{ width: '100%', padding: '0.75rem', borderRadius: '6px', border: '1px solid #d1d5db', outline: 'none', transition: 'border-color 0.2s', backgroundColor: 'transparent', color: '#111827' }}
+              placeholder="Enter your username"
+            />
+          </div>
+          
+          <div style={{ marginBottom: '2rem' }}>
+            <label style={{ display: 'block', color: '#374151', fontSize: '0.9rem', fontWeight: '500', marginBottom: '0.5rem' }}>Password</label>
+            <div style={{ position: 'relative' }}>
+              <input 
+                type={showPassword ? "text" : "password"} 
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                style={{ width: '100%', padding: '0.75rem', paddingRight: '2.5rem', borderRadius: '6px', border: '1px solid #d1d5db', outline: 'none', transition: 'border-color 0.2s', backgroundColor: 'transparent', color: '#111827' }}
+                placeholder="••••••••"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', padding: '0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+          </div>
+          
+          <button 
+            type="submit"
+            style={{ width: '100%', backgroundColor: '#4f46e5', color: 'white', padding: '0.75rem', borderRadius: '6px', border: 'none', fontSize: '1rem', fontWeight: '600', cursor: 'pointer', transition: 'background-color 0.2s' }}
+          >
+            Sign In
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+
+  if (!isAuthenticated) {
+    return renderLogin();
+  }
+
   return (
     <div className="app-container">
       <aside className="sidebar">
@@ -602,7 +659,7 @@ function App() {
         </nav>
 
         <div className="sidebar-footer">
-          <button className="logout-btn">
+          <button className="logout-btn" onClick={() => setIsAuthenticated(false)}>
             <LogOut size={20} />
             <span>Logout</span>
           </button>
