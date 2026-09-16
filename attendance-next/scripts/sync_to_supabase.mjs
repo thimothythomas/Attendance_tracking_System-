@@ -104,7 +104,32 @@ async function syncAttendance() {
 $conn = New-Object System.Data.OleDb.OleDbConnection("Provider=Microsoft.ACE.OLEDB.12.0;Data Source=${MDB_PATH};")
 $conn.Open()
 $cmd = $conn.CreateCommand()
-$cmd.CommandText = "SELECT attendancelogid, AttendanceDate, EmployeeId, InTime, OutTime, Duration, LateBy, EarlyBy, OverTime, PunchRecords, Present, Absent, Status, WeeklyOff, Holiday FROM AttendanceLogs WHERE AttendanceDate >= #${cutoff}#"
+$cmd.CommandText = "SELECT ShiftId, ShiftSName FROM Shifts"
+$reader = $cmd.ExecuteReader()
+$rows = @()
+while ($reader.Read()) {
+  $row = [ordered]@{
+    ShiftId    = $reader["ShiftId"].ToString().Trim()
+    ShiftSName = $reader["ShiftSName"].ToString().Trim()
+  }
+  $rows += $row
+}
+$reader.Close()
+$conn.Close()
+$rows | ConvertTo-Json -Depth 2 | Out-File -FilePath "${TEMP_JSON.replace(/\\/g, '\\\\')}" -Encoding utf8
+  `)
+
+  const shiftRows = readTempJson()
+  const shiftMap = {}
+  shiftRows.forEach(s => {
+    shiftMap[s.ShiftId] = s.ShiftSName
+  })
+
+  runPS1(`
+$conn = New-Object System.Data.OleDb.OleDbConnection("Provider=Microsoft.ACE.OLEDB.12.0;Data Source=${MDB_PATH};")
+$conn.Open()
+$cmd = $conn.CreateCommand()
+$cmd.CommandText = "SELECT TOP 5000 attendancelogid, AttendanceDate, EmployeeId, InTime, OutTime, Duration, LateBy, EarlyBy, OverTime, PunchRecords, Present, Absent, Status, WeeklyOff, Holiday, ShiftId FROM AttendanceLogs WHERE AttendanceDate >= #${cutoff}#"
 $reader = $cmd.ExecuteReader()
 $rows = @()
 while ($reader.Read()) {
@@ -124,6 +149,7 @@ while ($reader.Read()) {
     Status          = $reader["Status"].ToString().Trim()
     WeeklyOff       = $reader["WeeklyOff"].ToString().Trim()
     Holiday         = $reader["Holiday"].ToString().Trim()
+    ShiftId         = $reader["ShiftId"].ToString().Trim()
   }
   $rows += $row
 }
@@ -140,8 +166,10 @@ $rows | ConvertTo-Json -Depth 2 | Out-File -FilePath "${TEMP_JSON.replace(/\\/g,
   const BATCH = 200
   let pushed = 0
   for (let i = 0; i < rows.length; i += BATCH) {
-    const batch = rows.slice(i, i + BATCH).map(r => ({
-      id:              parseInt(r.attendancelogid) || 0,
+    const batch = rows.slice(i, i + BATCH).map(r => {
+      const shiftName = shiftMap[r.ShiftId] || ''
+      return {
+        id:              parseInt(r.attendancelogid) || 0,
       attendance_date: r.AttendanceDate?.slice(0, 10) || null,
       employee_id:     r.EmployeeId,
       in_time:         r.InTime || '',
@@ -153,12 +181,13 @@ $rows | ConvertTo-Json -Depth 2 | Out-File -FilePath "${TEMP_JSON.replace(/\\/g,
       punch_records:   r.PunchRecords || '',
       present:         r.Present === 'True',
       absent:          r.Absent === 'True',
-      status:          r.Status || '',
+      status:          `${r.Status || ''}||${shiftName}`,
       weekly_off:      r.WeeklyOff === 'True',
       holiday:         r.Holiday === 'True',
-    }))
+    }
+  })
 
-    const { error } = await supabase.from('attendance_logs').upsert(batch, { onConflict: 'id' })
+    const { error } = await supabase.from('attendance_logs').upsert(batch, { onConflict: 'attendance_date,employee_id' })
     if (error) log(`ERROR batch ${Math.floor(i / BATCH) + 1}: ${error.message}`)
     else pushed += batch.length
   }

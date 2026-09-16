@@ -3,15 +3,25 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { Users, CheckCircle, XCircle, Calendar, Search, X, LayoutDashboard, FileText, Settings, LogOut, Download, Upload, Lock, Eye, EyeOff } from 'lucide-react'
 import * as XLSX from 'xlsx'
+import { supabase } from '@/lib/supabase'
 
 function App() {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedEmployee, setSelectedEmployee] = useState(null)
   const [activeTab, setActiveTab] = useState('dashboard')
   const [statusFilter, setStatusFilter] = useState('All')
+  const [selectedMonth, setSelectedMonth] = useState('All')
   const [rawData, setRawData] = useState([])
+  const [allEmployees, setAllEmployees] = useState([])
   const [loading, setLoading] = useState(false)
   const fileInputRef = useRef(null)
+
+  const [debugData, setDebugData] = useState(null)
+  const [isAuthenticated, setIsAuthenticated] = useState(true)
+  const [loginError, setLoginError] = useState('')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -21,36 +31,118 @@ function App() {
 
   const fetchAttendanceData = async () => {
     setLoading(true)
-    try {
-      const res = await fetch('/api/attendance')
-      const json = await res.json()
-      if (json.success) {
-        setRawData(json.data)
-      } else {
-        alert('Failed to fetch data: ' + json.error)
+
+    const formatTime = (dateTimeStr) => {
+      if (!dateTimeStr || dateTimeStr.includes('1900-01-01')) return '--:--';
+      const parts = dateTimeStr.split(' ');
+      if (parts.length > 1) {
+        const timeParts = parts[1].split(':');
+        return `${timeParts[0]}:${timeParts[1]}`;
       }
+      return dateTimeStr;
+    };
+
+    const formatMinutes = (minStr) => {
+      if (!minStr || minStr === '0' || minStr === '') return '00:00';
+      const totalMins = parseInt(minStr, 10);
+      if (isNaN(totalMins)) return '00:00';
+      const hours = Math.floor(totalMins / 60);
+      const mins = totalMins % 60;
+      return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+    };
+
+    try {
+      const { data: logs, error: logsError } = await supabase
+        .from('attendance_logs')
+        .select(`
+          attendance_date,
+          employee_id,
+          in_time,
+          out_time,
+          duration,
+          late_by,
+          early_by,
+          overtime,
+          punch_records,
+          present,
+          absent,
+          status,
+          weekly_off,
+          holiday,
+          employees (
+            employee_name,
+            employee_code,
+            department_id
+          )
+        `)
+        .order('attendance_date', { ascending: false })
+
+      if (logsError) throw logsError
+
+      const { data: employeesData, error: empError } = await supabase
+        .from('employees')
+        .select('*')
+      if (empError) throw empError
+      
+      const activeEmployees = employeesData.filter(emp => 
+        !emp.employee_name?.startsWith('del_') && emp.employee_code !== '11'
+      )
+      setAllEmployees(activeEmployees)
+
+      const formatted = logs
+        .filter(log => {
+          const name = log.employees?.employee_name || '';
+          const code = log.employees?.employee_code || '';
+          return !name.startsWith('del_') && code !== '11';
+        })
+        .map(log => {
+          const statusStr = log.status || (log.present ? 'Present' : 'Absent');
+          const [rawStatus, shiftName] = statusStr.split('||');
+          
+          return {
+            date: log.attendance_date,
+            emp_id: log.employees?.employee_code || log.employee_id,
+            name: log.employees?.employee_name || 'Unknown',
+            emp_code: log.employees?.employee_code || '',
+            in_time: formatTime(log.in_time),
+            out_time: formatTime(log.out_time),
+            total_duration: formatMinutes(log.duration),
+            late_by: formatMinutes(log.late_by),
+            early_going_by: formatMinutes(log.early_by),
+            overtime: formatMinutes(log.overtime),
+            punch_records: log.punch_records || '',
+            status: rawStatus,
+            shift: (shiftName === 'Nightshift' ? 'NS' : shiftName) || '',
+            weekly_off: log.weekly_off || false,
+            holiday: log.holiday || false,
+          };
+        })
+      
+      setRawData(formatted)
     } catch (err) {
       console.error('Fetch error:', err)
-      alert('Failed to fetch live attendance data.')
+      alert('Failed to fetch live attendance data: ' + err.message)
     } finally {
       setLoading(false)
     }
   }
 
-  const [debugData, setDebugData] = useState(null)
-  const [isAuthenticated, setIsAuthenticated] = useState(true)
-  const [loginError, setLoginError] = useState('')
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-
   const parseDate = (dateStr) => {
     if (!dateStr) return new Date()
+    
+    // Check if it's already in YYYY-MM-DD format (from Supabase)
+    if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      const [y, m, d] = dateStr.split('-')
+      return new Date(parseInt(y), parseInt(m) - 1, parseInt(d))
+    }
+    
+    // Legacy Excel format fallback (DD-MMM-YYYY)
     const months = { 'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5, 'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11 }
     const parts = dateStr.split('-')
-    if (parts.length === 3) {
+    if (parts.length === 3 && isNaN(parseInt(parts[1]))) {
       return new Date(parseInt(parts[2]), months[parts[1]] || 0, parseInt(parts[0]))
     }
+    
     return new Date(dateStr)
   }
 
@@ -182,11 +274,46 @@ function App() {
     reader.readAsArrayBuffer(file)
   }
 
+  const availableMonths = useMemo(() => {
+    if (!rawData || rawData.length === 0) return [];
+    const monthObjs = new Map();
+    rawData.forEach(record => {
+       const d = parseDate(record.date);
+       const val = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}`;
+       const label = d.toLocaleDateString('default', { month: 'long', year: 'numeric' });
+       monthObjs.set(val, label);
+    });
+    return Array.from(monthObjs.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+  }, [rawData]);
+
+  const filteredRawData = useMemo(() => {
+    if (selectedMonth === 'All') return rawData;
+    return rawData.filter(record => {
+      const d = parseDate(record.date);
+      const val = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}`;
+      return val === selectedMonth;
+    });
+  }, [rawData, selectedMonth]);
+
   // Group data by employee
   const employeeSummaries = useMemo(() => {
     const map = new Map()
 
-    rawData.forEach(record => {
+    // Pre-populate map with all active employees so they show up even if they have 0 logs
+    allEmployees.forEach(emp => {
+      map.set(emp.employee_code, {
+        emp_id: emp.employee_code,
+        name: emp.employee_name,
+        totalDays: 0,
+        present: 0,
+        absent: 0,
+        leave: 0,
+        totalMinutesWorked: 0,
+        records: []
+      })
+    })
+
+    filteredRawData.forEach(record => {
       // Check if it's a weekend (Saturday = 6, Sunday = 0)
       const dateObj = parseDate(record.date)
       const dayOfWeek = dateObj.getDay()
@@ -242,8 +369,27 @@ function App() {
       }
     })
 
-    return Array.from(map.values())
-  }, [rawData])
+    const result = Array.from(map.values());
+    result.sort((a, b) => {
+      const idA = parseInt(a.emp_id, 10);
+      const idB = parseInt(b.emp_id, 10);
+      if (!isNaN(idA) && !isNaN(idB)) {
+        return idA - idB;
+      }
+      return String(a.emp_id).localeCompare(String(b.emp_id));
+    });
+
+    // Make sure totalDays matches the max working days so empty employees don't say 0 days while others say 12
+    const maxWorkingDays = result.reduce((max, emp) => Math.max(max, emp.totalDays), 0)
+    result.forEach(emp => {
+      if (emp.totalDays === 0 && maxWorkingDays > 0) {
+        emp.totalDays = maxWorkingDays
+        emp.absent = maxWorkingDays
+      }
+    })
+
+    return result;
+  }, [filteredRawData, allEmployees])
 
   // Filter employees based on search
   const filteredEmployees = useMemo(() => {
@@ -409,7 +555,7 @@ function App() {
   const renderReports = () => {
     // 1. Daily Attendance Trend
     const dailyStats = new Map()
-    rawData.forEach(record => {
+    filteredRawData.forEach(record => {
       const dateObj = parseDate(record.date)
       const dayOfWeek = dateObj.getDay()
       if (dayOfWeek === 0 || dayOfWeek === 6) return;
@@ -430,7 +576,7 @@ function App() {
 
     // 2. Punctuality (Late arrivals)
     const punctuality = new Map()
-    rawData.forEach(record => {
+    filteredRawData.forEach(record => {
       if (!punctuality.has(record.emp_id)) {
         punctuality.set(record.emp_id, { emp_id: record.emp_id, name: record.name, lateCount: 0, earlyCount: 0 })
       }
@@ -442,7 +588,7 @@ function App() {
     
     // 3. Overtime Leaders
     const overtimeStats = new Map()
-    rawData.forEach(record => {
+    filteredRawData.forEach(record => {
       if (!overtimeStats.has(record.emp_id)) {
         overtimeStats.set(record.emp_id, { emp_id: record.emp_id, name: record.name, otMinutes: 0 })
       }
@@ -561,19 +707,19 @@ function App() {
   }
 
   const dateRange = useMemo(() => {
-    if (!rawData || rawData.length === 0) return null;
+    if (!filteredRawData || filteredRawData.length === 0) return null;
     let minDate = null;
     let maxDate = null;
-    rawData.forEach(record => {
+    filteredRawData.forEach(record => {
       const d = parseDate(record.date);
       if (!minDate || d < minDate) minDate = d;
       if (!maxDate || d > maxDate) maxDate = d;
     });
-    if (!minDate || !maxDate) return null;
+    if (!minDate || maxDate == null) return null;
     
     const options = { year: 'numeric', month: 'short', day: 'numeric' };
     return `${minDate.toLocaleDateString(undefined, options)} - ${maxDate.toLocaleDateString(undefined, options)}`;
-  }, [rawData]);
+  }, [filteredRawData]);
 
   const handleLogin = (e) => {
     e.preventDefault();
@@ -695,12 +841,33 @@ function App() {
         <header className="top-bar">
           <div>
             <h1>{activeTab === 'dashboard' ? 'Attendance Dashboard' : activeTab === 'reports' ? 'Attendance Reports' : 'Settings'}</h1>
-            <p className="subtitle">
-              {dateRange ? <span style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '1.05rem' }}>Report Period: {dateRange}</span> : 'Overview of employee attendance and metrics'}
+            <p className="subtitle" style={{ marginTop: '0.25rem' }}>
+              {dateRange ? <span style={{ fontWeight: '500', color: '#64748b', fontSize: '0.85rem' }}>Report Period: {dateRange}</span> : 'Overview of employee attendance and metrics'}
             </p>
           </div>
           
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+            {availableMonths.length > 0 && (
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                style={{
+                  padding: '0.6rem 1rem',
+                  borderRadius: '8px',
+                  border: '1px solid #e2e8f0',
+                  backgroundColor: 'white',
+                  outline: 'none',
+                  fontSize: '0.9rem',
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="All">Last 90 days</option>
+                {availableMonths.map(([val, label]) => (
+                  <option key={val} value={val}>{label}</option>
+                ))}
+              </select>
+            )}
             <div className="search-box">
               <Search size={18} className="search-icon" />
               <input 
