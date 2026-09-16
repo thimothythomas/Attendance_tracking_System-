@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { Users, CheckCircle, XCircle, Calendar, Search, X, LayoutDashboard, FileText, Settings, LogOut, Download, Upload, Lock, Eye, EyeOff } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
@@ -10,7 +10,32 @@ function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
   const [statusFilter, setStatusFilter] = useState('All')
   const [rawData, setRawData] = useState([])
+  const [loading, setLoading] = useState(false)
   const fileInputRef = useRef(null)
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchAttendanceData()
+    }
+  }, [isAuthenticated])
+
+  const fetchAttendanceData = async () => {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/attendance')
+      const json = await res.json()
+      if (json.success) {
+        setRawData(json.data)
+      } else {
+        alert('Failed to fetch data: ' + json.error)
+      }
+    } catch (err) {
+      console.error('Fetch error:', err)
+      alert('Failed to fetch live attendance data.')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const [debugData, setDebugData] = useState(null)
   const [isAuthenticated, setIsAuthenticated] = useState(true)
@@ -694,16 +719,18 @@ function App() {
               ref={fileInputRef}
             />
             <button 
-              onClick={() => fileInputRef.current?.click()}
+              onClick={fetchAttendanceData}
+              disabled={loading}
               style={{
                 display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1.2rem',
                 backgroundColor: 'white', color: 'var(--accent-color)', border: '1px solid var(--accent-color)', borderRadius: '8px', 
-                cursor: 'pointer', fontWeight: '500', transition: 'all 0.2s',
+                cursor: loading ? 'not-allowed' : 'pointer', fontWeight: '500', transition: 'all 0.2s',
+                opacity: loading ? 0.7 : 1
               }}
-              onMouseOver={(e) => e.target.style.backgroundColor = '#f8fafc'}
-              onMouseOut={(e) => e.target.style.backgroundColor = 'white'}
+              onMouseOver={(e) => !loading && (e.target.style.backgroundColor = '#f8fafc')}
+              onMouseOut={(e) => !loading && (e.target.style.backgroundColor = 'white')}
             >
-              <Upload size={18} /> Upload Excel
+              {loading ? 'Syncing...' : 'Refresh Data'}
             </button>
             <button 
               onClick={downloadData}
@@ -727,21 +754,25 @@ function App() {
             height: '60vh', textAlign: 'center', color: 'var(--text-secondary)'
           }}>
             <Upload size={64} style={{ marginBottom: '1.5rem', color: 'var(--accent-color)', opacity: 0.5 }} />
-            <h2 style={{ fontSize: '1.5rem', color: 'var(--text-primary)', marginBottom: '0.5rem' }}>No Attendance Data</h2>
-            <p>Please upload an Excel report to view the dashboard.</p>
+            <h2 style={{ fontSize: '1.5rem', color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
+              {loading ? 'Loading live data...' : 'No Attendance Data'}
+            </h2>
+            <p>{loading ? 'Fetching from database...' : 'Please ensure the sync script is running on your server.'}</p>
             <button 
-              onClick={() => fileInputRef.current?.click()}
+              onClick={fetchAttendanceData}
+              disabled={loading}
               style={{
                 marginTop: '1.5rem',
                 display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1.5rem',
                 backgroundColor: 'var(--accent-color)', color: 'white', border: 'none', 
-                borderRadius: '8px', cursor: 'pointer', fontWeight: '500', transition: 'background-color 0.2s',
-                boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+                borderRadius: '8px', cursor: loading ? 'not-allowed' : 'pointer', fontWeight: '500', transition: 'background-color 0.2s',
+                boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                opacity: loading ? 0.7 : 1
               }}
-              onMouseOver={(e) => e.target.style.backgroundColor = 'var(--accent-hover)'}
-              onMouseOut={(e) => e.target.style.backgroundColor = 'var(--accent-color)'}
+              onMouseOver={(e) => !loading && (e.target.style.backgroundColor = 'var(--accent-hover)')}
+              onMouseOut={(e) => !loading && (e.target.style.backgroundColor = 'var(--accent-color)')}
             >
-              <Upload size={18} /> Select Excel File
+              {loading ? 'Loading...' : 'Fetch Live Data'}
             </button>
 
             {debugData && (
