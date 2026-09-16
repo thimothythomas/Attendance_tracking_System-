@@ -36,6 +36,7 @@ attendance_data.json
 *.xlsx
 *.xls
 .env*
+!.env.example
 
 # ───────────────────────────────────────────
 # OS / Editor
