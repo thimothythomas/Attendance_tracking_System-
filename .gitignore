@@ -44,6 +44,9 @@ attendance_data.json
 .DS_Store
 Thumbs.db
 *.pem
+.vscode/
+.idea/
+*.log
 .vercel
 
 # ───────────────────────────────────────────
