@@ -17,11 +17,18 @@ function App() {
   const fileInputRef = useRef(null)
 
   const [debugData, setDebugData] = useState(null)
-  const [isAuthenticated, setIsAuthenticated] = useState(true)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [loginError, setLoginError] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && localStorage.getItem('inxl_auth') === 'true') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setIsAuthenticated(true)
+    }
+  }, [])
+
 
 
   const fetchAttendanceData = async () => {
@@ -727,6 +734,7 @@ function App() {
     e.preventDefault();
     if (username === 'admin' && password === 'password') {
       setIsAuthenticated(true);
+      if (typeof window !== 'undefined') localStorage.setItem('inxl_auth', 'true');
       setLoginError('');
     } else {
       setLoginError('Invalid credentials');
@@ -832,7 +840,10 @@ function App() {
         </nav>
 
         <div className="sidebar-footer">
-          <button className="logout-btn" onClick={() => setIsAuthenticated(false)}>
+          <button className="logout-btn" onClick={() => {
+            if (typeof window !== 'undefined') localStorage.removeItem('inxl_auth');
+            setIsAuthenticated(false);
+          }}>
             <LogOut size={20} />
             <span>Logout</span>
           </button>
