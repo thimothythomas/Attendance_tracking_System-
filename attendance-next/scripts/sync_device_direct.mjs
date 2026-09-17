@@ -65,6 +65,42 @@ async function runDirectSync(daysBack = 30) {
     const att = await zk.getAttendances()
     rawPunches = att?.data || []
     log(`Retrieved ${rawPunches.length} total raw punch records from device memory.`)
+
+    // Auto-discover and enroll new users from the biometric machine into Supabase
+    try {
+      const devUsers = await zk.getUsers()
+      const userList = devUsers?.data || devUsers || []
+      log(`Device has ${userList.length} registered users. Checking for new staff...`)
+
+      let maxEmpId = 2500
+      employees.forEach(e => {
+        const n = parseInt(e.employee_id, 10)
+        if (!isNaN(n) && n > maxEmpId) maxEmpId = n
+      })
+
+      for (const u of userList) {
+        const uCode = String(u.userId || u.uid).trim()
+        if (uCode && !codeToEmpMap.has(uCode)) {
+          maxEmpId++
+          const cleanName = (u.name || `Staff ${uCode}`).replace(/,/g, ' ').trim()
+          const newEmp = {
+            employee_id: String(maxEmpId),
+            employee_name: cleanName,
+            employee_code: uCode,
+            department_id: '1'
+          }
+          const { error: insErr } = await supabase.from('employees').insert([newEmp])
+          if (!insErr) {
+            codeToEmpMap.set(uCode, newEmp)
+            log(`[AUTO-REGISTER] Discovered & added new employee from device: ${cleanName} (Machine ID: #${uCode})`)
+          } else {
+            log(`[AUTO-REGISTER ERROR] Could not add ${cleanName}: ${insErr.message}`)
+          }
+        }
+      }
+    } catch (uErr) {
+      log(`Warning: could not inspect device users: ${uErr.message}`)
+    }
   } catch (err) {
     log(`ERROR communicating with device: ${err.message}`)
     return

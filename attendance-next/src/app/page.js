@@ -4,6 +4,7 @@ import { useState, useMemo, useRef, useEffect } from 'react'
 import { Users, CheckCircle, XCircle, Calendar, Search, X, LayoutDashboard, FileText, Settings, LogOut, Download, Upload, Lock, Eye, EyeOff } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
+import EmployeeManagement from '@/components/EmployeeManagement'
 
 function App() {
   const [searchTerm, setSearchTerm] = useState('')
@@ -823,6 +824,13 @@ function App() {
               <span>Dashboard</span>
             </li>
             <li 
+              className={activeTab === 'employees' ? 'active' : ''}
+              onClick={() => setActiveTab('employees')}
+            >
+              <Users size={20} />
+              <span>Employees</span>
+            </li>
+            <li 
               className={activeTab === 'reports' ? 'active' : ''}
               onClick={() => setActiveTab('reports')}
             >
@@ -853,12 +861,13 @@ function App() {
       <main className="main-content">
         <header className="top-bar">
           <div>
-            <h1>{activeTab === 'dashboard' ? 'Attendance Dashboard' : activeTab === 'reports' ? 'Attendance Reports' : 'Settings'}</h1>
+            <h1>{activeTab === 'dashboard' ? 'Attendance Dashboard' : activeTab === 'reports' ? 'Attendance Reports' : activeTab === 'employees' ? 'Employee Management' : 'Settings'}</h1>
             <p className="subtitle" style={{ marginTop: '0.25rem' }}>
-              {dateRange ? <span style={{ fontWeight: '500', color: '#64748b', fontSize: '0.85rem' }}>Report Period: {dateRange}</span> : 'Overview of employee attendance and metrics'}
+              {activeTab === 'employees' ? 'Staff directory, biometric IDs, and shift allocation' : dateRange ? <span style={{ fontWeight: '500', color: '#64748b', fontSize: '0.85rem' }}>Report Period: {dateRange}</span> : 'Overview of employee attendance and metrics'}
             </p>
           </div>
           
+          {activeTab !== 'employees' && (
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
             {availableMonths.length > 0 && (
               <select
@@ -926,9 +935,12 @@ function App() {
               <Download size={18} /> Export
             </button>
           </div>
+          )}
         </header>
 
-        {rawData.length === 0 ? (
+        {activeTab === 'employees' ? (
+          <EmployeeManagement />
+        ) : rawData.length === 0 ? (
           <div style={{
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
             height: '60vh', textAlign: 'center', color: 'var(--text-secondary)'
