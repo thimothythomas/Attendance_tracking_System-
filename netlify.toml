@@ -1,4 +1,8 @@
-[build]
+﻿[build]
   base = "attendance-next"
   command = "npm run build"
   publish = "out"
+
+[build.environment]
+  NEXT_PUBLIC_SUPABASE_URL = "https://qbbzflvmmiahxldqzckp.supabase.co"
+  NEXT_PUBLIC_SUPABASE_ANON_KEY = "sb_publishable_c-m2osEWNoPbzSzewmYoyg_rlwVizBA"
