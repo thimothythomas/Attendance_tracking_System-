@@ -78,9 +78,15 @@ async function runDirectSync(daysBack = 30) {
         if (!isNaN(n) && n > maxEmpId) maxEmpId = n
       })
 
+      // Set of all codes currently in database (active AND deactivated/hidden)
+      const allKnownCodes = new Set(
+        employees.map(e => String(e.employee_code).replace(/^del_/, '').split('_')[0].trim())
+      )
+
       for (const u of userList) {
         const uCode = String(u.userId || u.uid).trim()
-        if (uCode && !codeToEmpMap.has(uCode)) {
+        // Only enroll if not already in database and not previously deactivated/hidden
+        if (uCode && !allKnownCodes.has(uCode)) {
           maxEmpId++
           const cleanName = (u.name || `Staff ${uCode}`).replace(/,/g, ' ').trim()
           const newEmp = {
