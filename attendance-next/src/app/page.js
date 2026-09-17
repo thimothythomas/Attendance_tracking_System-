@@ -18,6 +18,10 @@ function App() {
   const [selectedMonth, setSelectedMonth] = useState('All')
   const [rawData, setRawData] = useState([])
   const [allEmployees, setAllEmployees] = useState([])
+  const [departments, setDepartments] = useState(INITIAL_DEPARTMENTS)
+  const [shifts, setShifts] = useState(INITIAL_SHIFTS)
+  const [selectedDeptFilter, setSelectedDeptFilter] = useState('ALL')
+  const [viewingProfileEmp, setViewingProfileEmp] = useState(null)
   const [loading, setLoading] = useState(false)
   const fileInputRef = useRef(null)
 
@@ -91,9 +95,7 @@ function App() {
         .select('*')
       if (empError) throw empError
       
-      const activeEmployees = employeesData.filter(emp => 
-        !emp.employee_name?.startsWith('del_') && emp.employee_code !== '11'
-      )
+      const activeEmployees = enrichEmployees(employeesData || [])
       setAllEmployees(activeEmployees)
 
       const formatted = logs
@@ -133,6 +135,27 @@ function App() {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    const reloadMeta = () => {
+      const d = getStoredConfig('inxl_departments', INITIAL_DEPARTMENTS);
+      const s = getStoredConfig('inxl_shifts', INITIAL_SHIFTS);
+      setDepartments(d);
+      setShifts(s);
+    };
+    reloadMeta();
+
+    const handleSyncEvent = () => {
+      reloadMeta();
+      fetchAttendanceData();
+    };
+    window.addEventListener('inxl_data_updated', handleSyncEvent);
+    window.addEventListener('storage', handleSyncEvent);
+    return () => {
+      window.removeEventListener('inxl_data_updated', handleSyncEvent);
+      window.removeEventListener('storage', handleSyncEvent);
+    };
+  }, []);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -317,7 +340,10 @@ function App() {
     allEmployees.forEach(emp => {
       map.set(emp.employee_code, {
         emp_id: emp.employee_code,
-        name: emp.employee_name,
+        name: emp.displayName || emp.employee_name,
+        department_name: emp.department_name || 'Development',
+        shift_name: emp.shift_name || 'General Shift (09:30 AM - 06:30 PM)',
+        designation: emp.designation || 'Team Member',
         totalDays: 0,
         present: 0,
         absent: 0,
@@ -337,9 +363,13 @@ function App() {
 
       const { emp_id, name, status } = record
       if (!map.has(emp_id)) {
+        const empMeta = allEmployees.find(e => String(e.employee_code) === String(emp_id) || String(e.employee_id) === String(emp_id));
         map.set(emp_id, {
           emp_id,
-          name,
+          name: empMeta?.displayName || name,
+          department_name: empMeta?.department_name || 'Development',
+          shift_name: empMeta?.shift_name || 'General Shift (09:30 AM - 06:30 PM)',
+          designation: empMeta?.designation || 'Team Member',
           totalDays: 0,
           present: 0,
           absent: 0,
@@ -407,11 +437,13 @@ function App() {
 
   // Filter employees based on search
   const filteredEmployees = useMemo(() => {
-    return employeeSummaries.filter(emp =>
-      emp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      emp.emp_id.toString().includes(searchTerm)
-    )
-  }, [searchTerm, employeeSummaries])
+    return employeeSummaries.filter(emp => {
+      const matchSearch = emp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          emp.emp_id.toString().includes(searchTerm);
+      const matchDept = selectedDeptFilter === 'ALL' || emp.department_name === selectedDeptFilter;
+      return matchSearch && matchDept;
+    });
+  }, [searchTerm, selectedDeptFilter, employeeSummaries])
 
   const getStatusBadge = (status) => {
     if (status.includes('Present')) {
