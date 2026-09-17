@@ -1,15 +1,17 @@
 "use client";
 
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { Users, CheckCircle, XCircle, Calendar, Search, X, LayoutDashboard, FileText, Settings, LogOut, Download, Upload, Lock, Eye, EyeOff } from 'lucide-react'
+import { Users, Building, Clock, CheckCircle, XCircle, Calendar, Search, X, LayoutDashboard, FileText, Settings, LogOut, Download, Upload, Lock, Eye, EyeOff } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import EmployeeManagement from '@/components/EmployeeManagement'
+import OverviewDashboard from '@/components/OverviewDashboard'
+import SettingsView from '@/components/SettingsView'
 
 function App() {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedEmployee, setSelectedEmployee] = useState(null)
-  const [activeTab, setActiveTab] = useState('dashboard')
+  const [activeTab, setActiveTab] = useState('overview')
   const [statusFilter, setStatusFilter] = useState('All')
   const [selectedMonth, setSelectedMonth] = useState('All')
   const [rawData, setRawData] = useState([])
@@ -861,13 +863,26 @@ function App() {
       <main className="main-content">
         <header className="top-bar">
           <div>
-            <h1>{activeTab === 'dashboard' ? 'Attendance Dashboard' : activeTab === 'reports' ? 'Attendance Reports' : activeTab === 'employees' ? 'Employee Management' : 'Settings'}</h1>
+            <h1>
+              {activeTab === 'overview' ? 'Workforce Overview' :
+               activeTab === 'employees' ? 'Staff Directory & Personnel' :
+               activeTab === 'departments' ? 'Department Organization' :
+               activeTab === 'shifts' ? 'Shift Schedules & Timings' :
+               activeTab === 'timesheets' ? 'Timesheets & Attendance Logs' :
+               activeTab === 'reports' ? 'Attendance Reports' : 'System Settings'}
+            </h1>
             <p className="subtitle" style={{ marginTop: '0.25rem' }}>
-              {activeTab === 'employees' ? 'Staff directory, biometric IDs, and shift allocation' : dateRange ? <span style={{ fontWeight: '500', color: '#64748b', fontSize: '0.85rem' }}>Report Period: {dateRange}</span> : 'Overview of employee attendance and metrics'}
+              {activeTab === 'overview' ? 'Executive workforce operations, active headcounts, and daily pulse' :
+               activeTab === 'employees' ? 'Manage staff profiles, biometric IDs, and workforce assignments' :
+               activeTab === 'departments' ? 'Company departmental units, leads, and team allocations' :
+               activeTab === 'shifts' ? 'Office shift timings, grace periods, and work hours' :
+               activeTab === 'settings' ? 'Biometric device sync status and company configuration' :
+               dateRange ? <span style={{ fontWeight: '500', color: '#64748b', fontSize: '0.85rem' }}>Report Period: {dateRange}</span> :
+               'Daily biometric punch records and attendance calculations'}
             </p>
           </div>
           
-          {activeTab !== 'employees' && (
+          {(activeTab === 'timesheets' || activeTab === 'reports' || activeTab === 'dashboard') && (
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
             {availableMonths.length > 0 && (
               <select
@@ -938,8 +953,38 @@ function App() {
           )}
         </header>
 
-        {activeTab === 'employees' ? (
-          <EmployeeManagement />
+        {activeTab === 'overview' ? (
+          <OverviewDashboard
+            employees={allEmployees}
+            rawData={rawData}
+            departments={[
+              { id: 'dept_1', name: 'Development', color: '#4f46e5', bg: '#e0e7ff' },
+              { id: 'dept_2', name: 'Design', color: '#7e22ce', bg: '#f3e8ff' },
+              { id: 'dept_3', name: 'Marketing', color: '#c2410c', bg: '#ffedd5' },
+              { id: 'dept_4', name: 'Operations', color: '#0369a1', bg: '#e0f2fe' },
+              { id: 'dept_5', name: 'Human Resources', color: '#0f766e', bg: '#ccfbf1' },
+              { id: 'dept_6', name: 'Quality Assurance', color: '#b45309', bg: '#fef3c7' }
+            ]}
+            shifts={[
+              { id: 'shift_gen', name: 'General Shift', displayHours: '09:30 AM - 06:30 PM' },
+              { id: 'shift_morn', name: 'Morning Shift', displayHours: '08:30 AM - 05:30 PM' },
+              { id: 'shift_eve', name: 'Evening Shift', displayHours: '11:00 AM - 08:00 PM' },
+              { id: 'shift_flex', name: 'Flexible Timing', displayHours: 'Flexible (8h required)' }
+            ]}
+            onNavigate={(tab) => setActiveTab(tab)}
+            onOpenAddEmployee={() => setActiveTab('employees')}
+          />
+        ) : activeTab === 'employees' ? (
+          <EmployeeManagement initialSubTab="staff" rawData={rawData} />
+        ) : activeTab === 'departments' ? (
+          <EmployeeManagement initialSubTab="departments" rawData={rawData} />
+        ) : activeTab === 'shifts' ? (
+          <EmployeeManagement initialSubTab="shifts" rawData={rawData} />
+        ) : activeTab === 'settings' ? (
+          <SettingsView onLogout={() => {
+            if (typeof window !== 'undefined') localStorage.removeItem('inxl_auth');
+            setIsAuthenticated(false);
+          }} />
         ) : rawData.length === 0 ? (
           <div style={{
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
@@ -961,40 +1006,15 @@ function App() {
                 boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
                 opacity: loading ? 0.7 : 1
               }}
-              onMouseOver={(e) => !loading && (e.target.style.backgroundColor = 'var(--accent-hover)')}
-              onMouseOut={(e) => !loading && (e.target.style.backgroundColor = 'var(--accent-color)')}
             >
               {loading ? 'Loading...' : 'Fetch Live Data'}
             </button>
-
-            {debugData && (
-              <div style={{ marginTop: '2rem', padding: '1rem', background: '#f1f5f9', border: '2px solid red', borderRadius: '8px', overflowX: 'auto', maxWidth: '80vw' }}>
-                <h3 style={{ color: 'red', marginBottom: '1rem' }}>DEBUG INFORMATION</h3>
-                <p style={{ color: 'black', marginBottom: '1rem', fontSize: '14px' }}>
-                  Please click the button below to download the raw data, and upload the downloaded <b>raw_excel_data.json</b> file into our chat!
-                </p>
-                <button
-                  onClick={() => {
-                    const blob = new Blob([JSON.stringify(debugData, null, 2)], { type: 'application/json' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'raw_excel_data.json';
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                  }}
-                  style={{
-                    padding: '0.75rem 1.5rem', backgroundColor: '#ef4444', color: 'white',
-                    border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold'
-                  }}
-                >
-                  Download Raw Excel Data
-                </button>
-              </div>
-            )}
           </div>
-        ) : activeTab === 'dashboard' ? renderDashboard() : activeTab === 'reports' ? renderReports() : null}
+        ) : activeTab === 'timesheets' || activeTab === 'dashboard' ? (
+          renderDashboard()
+        ) : activeTab === 'reports' ? (
+          renderReports()
+        ) : null}
 
         {selectedEmployee && (
           <div className="modal-overlay" onClick={() => setSelectedEmployee(null)}>

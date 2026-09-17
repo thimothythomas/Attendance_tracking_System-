@@ -5,9 +5,9 @@ import { supabase } from '@/lib/supabase';
 import { 
   Users, UserPlus, Search, Edit3, Trash2, CheckCircle2, 
   AlertCircle, Clock, Building, X, RefreshCw,
-  Fingerprint, Plus, Layers, ArrowRight, ShieldCheck,
-  Calendar, Check, AlertTriangle
+  Fingerprint, Plus, ArrowRight, User
 } from 'lucide-react';
+import EmployeeProfileModal from './EmployeeProfileModal';
 
 const INITIAL_DEPARTMENTS = [
   { id: 'dept_1', name: 'Development', description: 'Software engineering, web & backend systems', color: '#4f46e5', bg: '#e0e7ff' },
@@ -41,21 +41,28 @@ function calcDuration(start, end) {
   const [sh, sm] = start.split(':').map(Number);
   const [eh, em] = end.split(':').map(Number);
   let totalMin = (eh * 60 + em) - (sh * 60 + sm);
-  if (totalMin < 0) totalMin += 24 * 60; // overnight shift
+  if (totalMin < 0) totalMin += 24 * 60;
   const hrs = Math.floor(totalMin / 60);
   const mins = totalMin % 60;
   return `${hrs}h ${mins > 0 ? mins + 'm' : '00m'}`;
 }
 
-export default function EmployeeManagement() {
-  // Navigation Tabs: 'staff' | 'departments' | 'shifts'
-  const [activeSubTab, setActiveSubTab] = useState('staff');
+export default function EmployeeManagement({ initialSubTab = 'staff', rawData = [] }) {
+  const [activeSubTab, setActiveSubTab] = useState(initialSubTab);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (initialSubTab) setActiveSubTab(initialSubTab);
+  }, [initialSubTab]);
 
   // Core Data
   const [employees, setEmployees] = useState([]);
   const [departments, setDepartments] = useState(INITIAL_DEPARTMENTS);
   const [shifts, setShifts] = useState(INITIAL_SHIFTS);
   const [loading, setLoading] = useState(true);
+
+  // Profile Modal State
+  const [viewingProfileEmp, setViewingProfileEmp] = useState(null);
 
   // Notifications
   const [errorMsg, setErrorMsg] = useState('');
@@ -68,7 +75,6 @@ export default function EmployeeManagement() {
   const [showInactive, setShowInactive] = useState(false);
 
   // Modal State
-  // modalMode: 'add_employee' | 'edit_employee' | 'delete_employee' | 'add_dept' | 'edit_dept' | 'delete_dept' | 'add_shift' | 'edit_shift' | 'delete_shift' | null
   const [modalMode, setModalMode] = useState(null);
   const [activeItem, setActiveItem] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -111,7 +117,6 @@ export default function EmployeeManagement() {
     } catch {}
   };
 
-  // Load Initial Departments and Shifts
   useEffect(() => {
     const storedDepts = getStoredConfig('inxl_departments', INITIAL_DEPARTMENTS);
     const storedShifts = getStoredConfig('inxl_shifts', INITIAL_SHIFTS);
@@ -182,7 +187,6 @@ export default function EmployeeManagement() {
     shifts.forEach(s => { counts[s.name] = 0; });
     employees.filter(e => e.is_active).forEach(e => {
       const sName = e.shift_name;
-      // Match by substring or exact name
       shifts.forEach(s => {
         if (sName && sName.includes(s.name)) {
           counts[s.name] = (counts[s.name] || 0) + 1;
@@ -210,9 +214,7 @@ export default function EmployeeManagement() {
     });
   }, [employees, showInactive, selectedDeptFilter, selectedShiftFilter, searchQuery]);
 
-  // ----------------------------------------------------
-  // EMPLOYEE CRUD HANDLERS
-  // ----------------------------------------------------
+  // Employee CRUD
   const handleOpenAddEmployee = () => {
     setFormEmpName('');
     setFormEmpCode('');
@@ -282,7 +284,6 @@ export default function EmployeeManagement() {
           throw insErr;
         }
 
-        // Save metadata
         const meta = getStoredConfig('inxl_employee_meta', {});
         meta[newId] = {
           department_name: formEmpDept,
@@ -325,7 +326,6 @@ export default function EmployeeManagement() {
           throw updErr;
         }
 
-        // Update metadata
         const meta = getStoredConfig('inxl_employee_meta', {});
         meta[activeItem.employee_id] = {
           department_name: formEmpDept,
@@ -378,9 +378,7 @@ export default function EmployeeManagement() {
     }
   };
 
-  // ----------------------------------------------------
-  // DEPARTMENT CRUD HANDLERS
-  // ----------------------------------------------------
+  // Department CRUD
   const handleOpenAddDept = () => {
     setFormDeptName('');
     setFormDeptDesc('');
@@ -442,7 +440,6 @@ export default function EmployeeManagement() {
       setDepartments(updated);
       saveStoredConfig('inxl_departments', updated);
 
-      // If department renamed, update employees assigned to it
       if (oldName !== name) {
         const meta = getStoredConfig('inxl_employee_meta', {});
         Object.keys(meta).forEach(id => {
@@ -477,9 +474,7 @@ export default function EmployeeManagement() {
     setModalMode(null);
   };
 
-  // ----------------------------------------------------
-  // SHIFT CRUD HANDLERS
-  // ----------------------------------------------------
+  // Shift CRUD
   const handleOpenAddShift = () => {
     setFormShiftName('');
     setFormShiftStart('09:30');
@@ -550,7 +545,6 @@ export default function EmployeeManagement() {
       setShifts(updated);
       saveStoredConfig('inxl_shifts', updated);
 
-      // If shift renamed or timings changed, update assigned employees
       const meta = getStoredConfig('inxl_employee_meta', {});
       Object.keys(meta).forEach(id => {
         if (meta[id].shift_name && meta[id].shift_name.includes(oldName)) {
@@ -588,15 +582,14 @@ export default function EmployeeManagement() {
       {/* Header & Sub-Navigation */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#111827', margin: 0 }}>
-            Workforce & Employee Management
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>
+            {activeSubTab === 'staff' ? 'Staff Directory & Personnel' : activeSubTab === 'departments' ? 'Department Organization' : 'Shift Schedules & Policies'}
           </h2>
-          <p style={{ color: '#6b7280', fontSize: '0.875rem', marginTop: '0.25rem', marginBottom: 0 }}>
-            Manage staff directory, department structures, and office shift timings.
+          <p style={{ color: '#64748b', fontSize: '0.875rem', marginTop: '0.25rem', marginBottom: 0 }}>
+            Manage staff profiles, department structures, and shift timings.
           </p>
         </div>
 
-        {/* Global Action Button according to active tab */}
         <div style={{ display: 'flex', gap: '0.75rem' }}>
           <button
             onClick={fetchEmployees}
@@ -617,12 +610,12 @@ export default function EmployeeManagement() {
               style={{
                 display: 'flex', alignItems: 'center', gap: '0.5rem',
                 padding: '0.625rem 1.25rem', borderRadius: '8px', border: 'none',
-                backgroundColor: '#4f46e5', color: 'white', fontSize: '0.875rem', fontWeight: 600,
-                cursor: 'pointer', boxShadow: '0 2px 4px rgba(79, 70, 229, 0.25)'
+                backgroundColor: '#0f4c81', color: 'white', fontSize: '0.875rem', fontWeight: 600,
+                cursor: 'pointer', boxShadow: '0 2px 4px rgba(15, 76, 129, 0.25)'
               }}
             >
               <UserPlus size={18} />
-              <span>Add Employee</span>
+              <span>Add Staff Member</span>
             </button>
           )}
 
@@ -652,15 +645,15 @@ export default function EmployeeManagement() {
               }}
             >
               <Plus size={18} />
-              <span>Add Shift</span>
+              <span>Add Shift Schedule</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* Sub-Tab Navigation Bar */}
+      {/* Sub-Tabs */}
       <div style={{
-        display: 'flex', gap: '0.5rem', borderBottom: '1px solid #e5e7eb',
+        display: 'flex', gap: '0.5rem', borderBottom: '1px solid #e2e8f0',
         marginBottom: '1.5rem', paddingBottom: '0.25rem'
       }}>
         <button
@@ -669,7 +662,7 @@ export default function EmployeeManagement() {
             display: 'flex', alignItems: 'center', gap: '0.5rem',
             padding: '0.75rem 1.25rem', borderRadius: '8px', border: 'none',
             backgroundColor: activeSubTab === 'staff' ? '#e0e7ff' : 'transparent',
-            color: activeSubTab === 'staff' ? '#4338ca' : '#6b7280',
+            color: activeSubTab === 'staff' ? '#4338ca' : '#64748b',
             fontWeight: activeSubTab === 'staff' ? 700 : 500,
             cursor: 'pointer', fontSize: '0.875rem', transition: 'all 0.15s'
           }}
@@ -684,7 +677,7 @@ export default function EmployeeManagement() {
             display: 'flex', alignItems: 'center', gap: '0.5rem',
             padding: '0.75rem 1.25rem', borderRadius: '8px', border: 'none',
             backgroundColor: activeSubTab === 'departments' ? '#e0f2fe' : 'transparent',
-            color: activeSubTab === 'departments' ? '#0369a1' : '#6b7280',
+            color: activeSubTab === 'departments' ? '#0369a1' : '#64748b',
             fontWeight: activeSubTab === 'departments' ? 700 : 500,
             cursor: 'pointer', fontSize: '0.875rem', transition: 'all 0.15s'
           }}
@@ -699,7 +692,7 @@ export default function EmployeeManagement() {
             display: 'flex', alignItems: 'center', gap: '0.5rem',
             padding: '0.75rem 1.25rem', borderRadius: '8px', border: 'none',
             backgroundColor: activeSubTab === 'shifts' ? '#fef3c7' : 'transparent',
-            color: activeSubTab === 'shifts' ? '#b45309' : '#6b7280',
+            color: activeSubTab === 'shifts' ? '#b45309' : '#64748b',
             fontWeight: activeSubTab === 'shifts' ? 700 : 500,
             cursor: 'pointer', fontSize: '0.875rem', transition: 'all 0.15s'
           }}
@@ -740,7 +733,7 @@ export default function EmployeeManagement() {
           {/* Quick Filters */}
           <div style={{
             backgroundColor: 'white', padding: '1rem 1.25rem', borderRadius: '12px',
-            border: '1px solid #e5e7eb', marginBottom: '1.25rem',
+            border: '1px solid #e2e8f0', marginBottom: '1.25rem',
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             flexWrap: 'wrap', gap: '1rem'
           }}>
@@ -759,7 +752,6 @@ export default function EmployeeManagement() {
                 />
               </div>
 
-              {/* Department Dropdown Filter */}
               <select
                 value={selectedDeptFilter}
                 onChange={(e) => setSelectedDeptFilter(e.target.value)}
@@ -774,7 +766,6 @@ export default function EmployeeManagement() {
                 ))}
               </select>
 
-              {/* Shift Dropdown Filter */}
               <select
                 value={selectedShiftFilter}
                 onChange={(e) => setSelectedShiftFilter(e.target.value)}
@@ -801,18 +792,18 @@ export default function EmployeeManagement() {
             </label>
           </div>
 
-          {/* Table */}
+          {/* Staff Table */}
           <div style={{
-            backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e5e7eb',
+            backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0',
             overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
           }}>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
                 <thead>
-                  <tr style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb', color: '#4b5563', fontWeight: 600 }}>
-                    <th style={{ padding: '0.875rem 1.25rem' }}>Employee</th>
-                    <th style={{ padding: '0.875rem 1.25rem' }}>Biometric ID</th>
-                    <th style={{ padding: '0.875rem 1.25rem' }}>Assigned Department</th>
+                  <tr style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: 600 }}>
+                    <th style={{ padding: '0.875rem 1.25rem' }}>Employee Name & Role</th>
+                    <th style={{ padding: '0.875rem 1.25rem' }}>Biometric Machine ID</th>
+                    <th style={{ padding: '0.875rem 1.25rem' }}>Department</th>
                     <th style={{ padding: '0.875rem 1.25rem' }}>Assigned Shift Timing</th>
                     <th style={{ padding: '0.875rem 1.25rem' }}>Status</th>
                     <th style={{ padding: '0.875rem 1.25rem', textAlign: 'right' }}>Actions</th>
@@ -821,15 +812,15 @@ export default function EmployeeManagement() {
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan="6" style={{ padding: '3rem', textAlign: 'center', color: '#6b7280' }}>
+                      <td colSpan="6" style={{ padding: '3rem', textAlign: 'center', color: '#64748b' }}>
                         <RefreshCw size={24} className="spin" style={{ margin: '0 auto 0.5rem auto' }} />
                         Loading employee directory...
                       </td>
                     </tr>
                   ) : filteredEmployees.length === 0 ? (
                     <tr>
-                      <td colSpan="6" style={{ padding: '3rem', textAlign: 'center', color: '#6b7280' }}>
-                        No employees found matching your filters.
+                      <td colSpan="6" style={{ padding: '3rem', textAlign: 'center', color: '#64748b' }}>
+                        No staff members found matching your filters.
                       </td>
                     </tr>
                   ) : (
@@ -844,24 +835,31 @@ export default function EmployeeManagement() {
                       const deptObj = departments.find(d => d.name === emp.department_name);
 
                       return (
-                        <tr key={emp.employee_id} style={{ borderBottom: '1px solid #f3f4f6', transition: 'background-color 0.15s' }}>
-                          {/* Name */}
+                        <tr 
+                          key={emp.employee_id} 
+                          style={{ borderBottom: '1px solid #f1f5f9', transition: 'background-color 0.15s' }}
+                        >
+                          {/* Name & Avatar with 360 profile click */}
                           <td style={{ padding: '0.875rem 1.25rem' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            <div 
+                              onClick={() => setViewingProfileEmp(emp)}
+                              style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }}
+                              title="Click to view 360° Employee Profile"
+                            >
                               <div style={{
                                 width: '38px', height: '38px', borderRadius: '50%',
-                                backgroundColor: emp.is_active ? (deptObj?.bg || '#e0e7ff') : '#f3f4f6',
-                                color: emp.is_active ? (deptObj?.color || '#4338ca') : '#9ca3af',
+                                backgroundColor: emp.is_active ? (deptObj?.bg || '#e0e7ff') : '#f1f5f9',
+                                color: emp.is_active ? (deptObj?.color || '#4338ca') : '#94a3b8',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                                 fontWeight: 700, fontSize: '0.875rem'
                               }}>
                                 {initials}
                               </div>
                               <div>
-                                <div style={{ fontWeight: 600, color: emp.is_active ? '#111827' : '#6b7280' }}>
-                                  {emp.displayName}
+                                <div style={{ fontWeight: 600, color: emp.is_active ? '#0f172a' : '#64748b', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                  <span>{emp.displayName}</span>
                                 </div>
-                                <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
+                                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
                                   {emp.designation || 'Team Member'} • DB #{emp.employee_id}
                                 </div>
                               </div>
@@ -876,7 +874,7 @@ export default function EmployeeManagement() {
                               padding: '0.25rem 0.625rem', borderRadius: '6px',
                               fontWeight: 600, color: '#334155', fontSize: '0.75rem'
                             }}>
-                              <Fingerprint size={13} color="#4f46e5" />
+                              <Fingerprint size={13} color="#0f4c81" />
                               Machine #{emp.displayCode}
                             </span>
                           </td>
@@ -887,8 +885,8 @@ export default function EmployeeManagement() {
                               display: 'inline-flex', alignItems: 'center', gap: '0.375rem',
                               padding: '0.25rem 0.65rem', borderRadius: '12px',
                               fontSize: '0.75rem', fontWeight: 600,
-                              backgroundColor: deptObj?.bg || '#f3f4f6',
-                              color: deptObj?.color || '#374151'
+                              backgroundColor: deptObj?.bg || '#f1f5f9',
+                              color: deptObj?.color || '#334155'
                             }}>
                               <Building size={12} />
                               {emp.department_name}
@@ -897,8 +895,8 @@ export default function EmployeeManagement() {
 
                           {/* Shift */}
                           <td style={{ padding: '0.875rem 1.25rem' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', color: '#374151', fontSize: '0.8125rem' }}>
-                              <Clock size={14} color="#f59e0b" />
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', color: '#334155', fontSize: '0.8125rem' }}>
+                              <Clock size={14} color="#d97706" />
                               <span style={{ fontWeight: 500 }}>{emp.shift_name}</span>
                             </div>
                           </td>
@@ -908,10 +906,10 @@ export default function EmployeeManagement() {
                             <span style={{
                               display: 'inline-flex', alignItems: 'center', gap: '0.375rem',
                               padding: '0.2rem 0.5rem', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 500,
-                              backgroundColor: emp.is_active ? '#def7ec' : '#f3f4f6',
-                              color: emp.is_active ? '#03543f' : '#6b7280'
+                              backgroundColor: emp.is_active ? '#dcfce7' : '#f1f5f9',
+                              color: emp.is_active ? '#15803d' : '#64748b'
                             }}>
-                              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: emp.is_active ? '#31c48d' : '#9ca3af' }}></span>
+                              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: emp.is_active ? '#22c55e' : '#94a3b8' }}></span>
                               {emp.is_active ? 'Active' : 'Inactive'}
                             </span>
                           </td>
@@ -920,11 +918,21 @@ export default function EmployeeManagement() {
                           <td style={{ padding: '0.875rem 1.25rem', textAlign: 'right' }}>
                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
                               <button
-                                onClick={() => handleOpenEditEmployee(emp)}
-                                title="Edit Employee, Department or Shift"
+                                onClick={() => setViewingProfileEmp(emp)}
+                                title="View 360° Profile"
                                 style={{
-                                  padding: '0.375rem', borderRadius: '6px', border: '1px solid #e5e7eb',
-                                  backgroundColor: 'white', color: '#4b5563', cursor: 'pointer', transition: 'all 0.15s'
+                                  padding: '0.375rem', borderRadius: '6px', border: '1px solid #e2e8f0',
+                                  backgroundColor: 'white', color: '#0f4c81', cursor: 'pointer'
+                                }}
+                              >
+                                <User size={15} />
+                              </button>
+                              <button
+                                onClick={() => handleOpenEditEmployee(emp)}
+                                title="Edit Assignments"
+                                style={{
+                                  padding: '0.375rem', borderRadius: '6px', border: '1px solid #e2e8f0',
+                                  backgroundColor: 'white', color: '#475569', cursor: 'pointer'
                                 }}
                               >
                                 <Edit3 size={15} />
@@ -932,10 +940,10 @@ export default function EmployeeManagement() {
                               {emp.is_active && (
                                 <button
                                   onClick={() => handleOpenDeleteEmployee(emp)}
-                                  title="Deactivate Employee"
+                                  title="Deactivate / Hide Staff"
                                   style={{
                                     padding: '0.375rem', borderRadius: '6px', border: '1px solid #fee2e2',
-                                    backgroundColor: '#fef2f2', color: '#dc2626', cursor: 'pointer', transition: 'all 0.15s'
+                                    backgroundColor: '#fef2f2', color: '#dc2626', cursor: 'pointer'
                                   }}
                                 >
                                   <Trash2 size={15} />
@@ -959,17 +967,6 @@ export default function EmployeeManagement() {
       {/* ======================================================== */}
       {activeSubTab === 'departments' && (
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-            <div>
-              <h3 style={{ fontSize: '1.125rem', fontWeight: 600, color: '#111827', margin: 0 }}>
-                Company Departments
-              </h3>
-              <p style={{ color: '#6b7280', fontSize: '0.8125rem', marginTop: '0.25rem', marginBottom: 0 }}>
-                Create departments, assign leads, and group staff members.
-              </p>
-            </div>
-          </div>
-
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
             {departments.map((dept) => {
               const membersCount = deptMembersCount[dept.name] || 0;
@@ -979,7 +976,7 @@ export default function EmployeeManagement() {
                 <div
                   key={dept.id}
                   style={{
-                    backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e5e7eb',
+                    backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e2e8f0',
                     padding: '1.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
                     display: 'flex', flexDirection: 'column', justifyContent: 'space-between'
                   }}
@@ -995,11 +992,11 @@ export default function EmployeeManagement() {
                           <Building size={20} />
                         </div>
                         <div>
-                          <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#111827' }}>
+                          <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>
                             {dept.name}
                           </h4>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 500 }}>
-                            {membersCount} {membersCount === 1 ? 'staff member' : 'staff members'}
+                          <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 500 }}>
+                            {membersCount} {membersCount === 1 ? 'member' : 'members'}
                           </span>
                         </div>
                       </div>
@@ -1009,8 +1006,8 @@ export default function EmployeeManagement() {
                           onClick={() => handleOpenEditDept(dept)}
                           title="Edit Department"
                           style={{
-                            padding: '0.35rem', borderRadius: '6px', border: '1px solid #e5e7eb',
-                            backgroundColor: 'white', color: '#4b5563', cursor: 'pointer'
+                            padding: '0.35rem', borderRadius: '6px', border: '1px solid #e2e8f0',
+                            backgroundColor: 'white', color: '#475569', cursor: 'pointer'
                           }}
                         >
                           <Edit3 size={14} />
@@ -1028,14 +1025,13 @@ export default function EmployeeManagement() {
                       </div>
                     </div>
 
-                    <p style={{ fontSize: '0.8125rem', color: '#6b7280', margin: '0 0 1rem 0', lineHeight: 1.4 }}>
-                      {dept.description || 'No description provided.'}
+                    <p style={{ fontSize: '0.8125rem', color: '#64748b', margin: '0 0 1rem 0', lineHeight: 1.4 }}>
+                      {dept.description || 'Corporate department unit.'}
                     </p>
                   </div>
 
-                  {/* Member avatars preview */}
                   <div style={{
-                    paddingTop: '0.75rem', borderTop: '1px solid #f3f4f6',
+                    paddingTop: '0.75rem', borderTop: '1px solid #f1f5f9',
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center'
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -1053,14 +1049,9 @@ export default function EmployeeManagement() {
                           {(emp.displayName || 'E')[0]}
                         </div>
                       ))}
-                      {deptEmployees.length > 4 && (
-                        <span style={{ fontSize: '0.75rem', color: '#6b7280', marginLeft: '6px' }}>
-                          +{deptEmployees.length - 4} more
-                        </span>
-                      )}
                       {deptEmployees.length === 0 && (
-                        <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontStyle: 'italic' }}>
-                          No staff assigned yet
+                        <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontStyle: 'italic' }}>
+                          No staff assigned
                         </span>
                       )}
                     </div>
@@ -1071,7 +1062,7 @@ export default function EmployeeManagement() {
                         setActiveSubTab('staff');
                       }}
                       style={{
-                        background: 'none', border: 'none', color: '#4f46e5',
+                        background: 'none', border: 'none', color: '#0f4c81',
                         fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer',
                         display: 'flex', alignItems: 'center', gap: '0.25rem'
                       }}
@@ -1088,21 +1079,10 @@ export default function EmployeeManagement() {
       )}
 
       {/* ======================================================== */}
-      {/* TAB 3: SHIFTS & SCHEDULES MANAGEMENT */}
+      {/* TAB 3: SHIFTS & SCHEDULES */}
       {/* ======================================================== */}
       {activeSubTab === 'shifts' && (
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-            <div>
-              <h3 style={{ fontSize: '1.125rem', fontWeight: 600, color: '#111827', margin: 0 }}>
-                Shift Schedules & Timings
-              </h3>
-              <p style={{ color: '#6b7280', fontSize: '0.8125rem', marginTop: '0.25rem', marginBottom: 0 }}>
-                Define working hours, in-time, out-time, and late-mark grace periods.
-              </p>
-            </div>
-          </div>
-
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
             {shifts.map((shift) => {
               const membersCount = shiftMembersCount[shift.name] || 0;
@@ -1112,7 +1092,7 @@ export default function EmployeeManagement() {
                 <div
                   key={shift.id}
                   style={{
-                    backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e5e7eb',
+                    backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e2e8f0',
                     padding: '1.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
                     display: 'flex', flexDirection: 'column', justifyContent: 'space-between'
                   }}
@@ -1128,11 +1108,11 @@ export default function EmployeeManagement() {
                           <Clock size={20} />
                         </div>
                         <div>
-                          <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#111827' }}>
+                          <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>
                             {shift.name}
                           </h4>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 500 }}>
-                            {membersCount} {membersCount === 1 ? 'employee assigned' : 'employees assigned'}
+                          <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 500 }}>
+                            {membersCount} {membersCount === 1 ? 'assigned' : 'assigned'}
                           </span>
                         </div>
                       </div>
@@ -1142,8 +1122,8 @@ export default function EmployeeManagement() {
                           onClick={() => handleOpenEditShift(shift)}
                           title="Edit Shift"
                           style={{
-                            padding: '0.35rem', borderRadius: '6px', border: '1px solid #e5e7eb',
-                            backgroundColor: 'white', color: '#4b5563', cursor: 'pointer'
+                            padding: '0.35rem', borderRadius: '6px', border: '1px solid #e2e8f0',
+                            backgroundColor: 'white', color: '#475569', cursor: 'pointer'
                           }}
                         >
                           <Edit3 size={14} />
@@ -1161,25 +1141,24 @@ export default function EmployeeManagement() {
                       </div>
                     </div>
 
-                    {/* Timing details */}
                     <div style={{
                       backgroundColor: '#f8fafc', padding: '0.875rem', borderRadius: '8px',
                       border: '1px solid #f1f5f9', margin: '0.75rem 0'
                     }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                         <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Shift Timings:</span>
-                        <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#1e293b' }}>
+                        <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#0f172a' }}>
                           {shift.displayHours}
                         </span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                        <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Shift Duration:</span>
+                        <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Duration:</span>
                         <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#0369a1' }}>
                           {shift.duration || '9h 00m'}
                         </span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Late Grace Period:</span>
+                        <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Grace Period:</span>
                         <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#16a34a' }}>
                           {shift.graceMinutes} mins
                         </span>
@@ -1187,9 +1166,8 @@ export default function EmployeeManagement() {
                     </div>
                   </div>
 
-                  {/* Footer view staff */}
                   <div style={{
-                    paddingTop: '0.75rem', borderTop: '1px solid #f3f4f6',
+                    paddingTop: '0.75rem', borderTop: '1px solid #f1f5f9',
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center'
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -1208,7 +1186,7 @@ export default function EmployeeManagement() {
                         </div>
                       ))}
                       {shiftEmployees.length === 0 && (
-                        <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontStyle: 'italic' }}>
+                        <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontStyle: 'italic' }}>
                           No staff assigned
                         </span>
                       )}
@@ -1220,7 +1198,7 @@ export default function EmployeeManagement() {
                         setActiveSubTab('staff');
                       }}
                       style={{
-                        background: 'none', border: 'none', color: '#4f46e5',
+                        background: 'none', border: 'none', color: '#0f4c81',
                         fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer',
                         display: 'flex', alignItems: 'center', gap: '0.25rem'
                       }}
@@ -1236,9 +1214,19 @@ export default function EmployeeManagement() {
         </div>
       )}
 
-      {/* ======================================================== */}
+      {/* 360 PROFILE MODAL */}
+      {viewingProfileEmp && (
+        <EmployeeProfileModal
+          employee={viewingProfileEmp}
+          rawData={rawData}
+          shifts={shifts}
+          departments={departments}
+          onClose={() => setViewingProfileEmp(null)}
+          onEdit={(emp) => handleOpenEditEmployee(emp)}
+        />
+      )}
+
       {/* MODAL: ADD / EDIT EMPLOYEE */}
-      {/* ======================================================== */}
       {(modalMode === 'add_employee' || modalMode === 'edit_employee') && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 1000,
@@ -1250,15 +1238,15 @@ export default function EmployeeManagement() {
             boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)', overflow: 'hidden'
           }}>
             <div style={{
-              padding: '1.25rem 1.5rem', borderBottom: '1px solid #e5e7eb',
+              padding: '1.25rem 1.5rem', borderBottom: '1px solid #e2e8f0',
               display: 'flex', justifyContent: 'space-between', alignItems: 'center'
             }}>
-              <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 700, color: '#111827' }}>
+              <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 700, color: '#0f172a' }}>
                 {modalMode === 'add_employee' ? 'Register New Staff Member' : 'Edit Staff Profile & Assignments'}
               </h3>
               <button
                 onClick={() => setModalMode(null)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}
               >
                 <X size={20} />
               </button>
@@ -1274,7 +1262,6 @@ export default function EmployeeManagement() {
                 </div>
               )}
 
-              {/* Name */}
               <div style={{ marginBottom: '1.25rem' }}>
                 <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: '0.375rem' }}>
                   Full Name <span style={{ color: '#ef4444' }}>*</span>
@@ -1292,7 +1279,6 @@ export default function EmployeeManagement() {
                 />
               </div>
 
-              {/* Biometric Machine ID & Designation */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: '0.375rem' }}>
@@ -1309,7 +1295,7 @@ export default function EmployeeManagement() {
                       borderRadius: '8px', fontSize: '0.875rem', outline: 'none'
                     }}
                   />
-                  <span style={{ fontSize: '0.7rem', color: '#6b7280', marginTop: '0.25rem', display: 'block' }}>
+                  <span style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '0.25rem', display: 'block' }}>
                     User ID set on physical device
                   </span>
                 </div>
@@ -1331,7 +1317,6 @@ export default function EmployeeManagement() {
                 </div>
               </div>
 
-              {/* Department Assignment */}
               <div style={{ marginBottom: '1.25rem' }}>
                 <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: '0.375rem' }}>
                   Assign Department <span style={{ color: '#ef4444' }}>*</span>
@@ -1352,7 +1337,6 @@ export default function EmployeeManagement() {
                 </select>
               </div>
 
-              {/* Shift Timing Assignment */}
               <div style={{ marginBottom: '1.25rem' }}>
                 <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: '0.375rem' }}>
                   Assign Shift Schedule <span style={{ color: '#ef4444' }}>*</span>
@@ -1373,9 +1357,8 @@ export default function EmployeeManagement() {
                 </select>
               </div>
 
-              {/* Active Toggle (Edit mode) */}
               {modalMode === 'edit_employee' && (
-                <div style={{ marginBottom: '1.5rem', padding: '0.75rem', backgroundColor: '#f9fafb', borderRadius: '8px' }}>
+                <div style={{ marginBottom: '1.5rem', padding: '0.75rem', backgroundColor: '#f8fafc', borderRadius: '8px' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', color: '#374151', cursor: 'pointer' }}>
                     <input
                       type="checkbox"
@@ -1385,13 +1368,12 @@ export default function EmployeeManagement() {
                     />
                     <span style={{ fontWeight: 600 }}>Active Employee</span>
                   </label>
-                  <span style={{ fontSize: '0.75rem', color: '#6b7280', display: 'block', marginLeft: '1.5rem', marginTop: '0.25rem' }}>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginLeft: '1.5rem', marginTop: '0.25rem' }}>
                     Unchecking will mark as inactive while safely preserving past attendance records.
                   </span>
                 </div>
               )}
 
-              {/* Actions */}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
                 <button
                   type="button"
@@ -1409,7 +1391,7 @@ export default function EmployeeManagement() {
                   disabled={saving}
                   style={{
                     padding: '0.625rem 1.5rem', borderRadius: '8px', border: 'none',
-                    backgroundColor: '#4f46e5', color: 'white', fontSize: '0.875rem', fontWeight: 600,
+                    backgroundColor: '#0f4c81', color: 'white', fontSize: '0.875rem', fontWeight: 600,
                     cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1,
                     display: 'flex', alignItems: 'center', gap: '0.5rem'
                   }}
@@ -1423,9 +1405,7 @@ export default function EmployeeManagement() {
         </div>
       )}
 
-      {/* ======================================================== */}
       {/* MODAL: ADD / EDIT DEPARTMENT */}
-      {/* ======================================================== */}
       {(modalMode === 'add_dept' || modalMode === 'edit_dept') && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 1000,
@@ -1437,15 +1417,15 @@ export default function EmployeeManagement() {
             boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)', overflow: 'hidden'
           }}>
             <div style={{
-              padding: '1.25rem 1.5rem', borderBottom: '1px solid #e5e7eb',
+              padding: '1.25rem 1.5rem', borderBottom: '1px solid #e2e8f0',
               display: 'flex', justifyContent: 'space-between', alignItems: 'center'
             }}>
-              <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 700, color: '#111827' }}>
+              <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 700, color: '#0f172a' }}>
                 {modalMode === 'add_dept' ? 'Create New Department' : 'Edit Department'}
               </h3>
               <button
                 onClick={() => setModalMode(null)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}
               >
                 <X size={20} />
               </button>
@@ -1503,7 +1483,7 @@ export default function EmployeeManagement() {
                       onClick={() => setFormDeptColor(c)}
                       style={{
                         width: '32px', height: '32px', borderRadius: '50%', backgroundColor: c,
-                        border: formDeptColor === c ? '3px solid #111827' : '2px solid white',
+                        border: formDeptColor === c ? '3px solid #0f172a' : '2px solid white',
                         cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
                       }}
                     />
@@ -1539,9 +1519,7 @@ export default function EmployeeManagement() {
         </div>
       )}
 
-      {/* ======================================================== */}
       {/* MODAL: ADD / EDIT SHIFT */}
-      {/* ======================================================== */}
       {(modalMode === 'add_shift' || modalMode === 'edit_shift') && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 1000,
@@ -1553,15 +1531,15 @@ export default function EmployeeManagement() {
             boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)', overflow: 'hidden'
           }}>
             <div style={{
-              padding: '1.25rem 1.5rem', borderBottom: '1px solid #e5e7eb',
+              padding: '1.25rem 1.5rem', borderBottom: '1px solid #e2e8f0',
               display: 'flex', justifyContent: 'space-between', alignItems: 'center'
             }}>
-              <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 700, color: '#111827' }}>
+              <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 700, color: '#0f172a' }}>
                 {modalMode === 'add_shift' ? 'Create New Shift Timing' : 'Edit Shift Schedule'}
               </h3>
               <button
                 onClick={() => setModalMode(null)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}
               >
                 <X size={20} />
               </button>
@@ -1574,7 +1552,6 @@ export default function EmployeeManagement() {
                 </div>
               )}
 
-              {/* Shift Name */}
               <div style={{ marginBottom: '1.25rem' }}>
                 <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: '0.375rem' }}>
                   Shift Name <span style={{ color: '#ef4444' }}>*</span>
@@ -1592,7 +1569,6 @@ export default function EmployeeManagement() {
                 />
               </div>
 
-              {/* Start and End Times */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: '0.375rem' }}>
@@ -1608,7 +1584,7 @@ export default function EmployeeManagement() {
                       borderRadius: '8px', fontSize: '0.875rem', outline: 'none'
                     }}
                   />
-                  <span style={{ fontSize: '0.7rem', color: '#6b7280', marginTop: '0.25rem', display: 'block' }}>
+                  <span style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '0.25rem', display: 'block' }}>
                     {formatTimeDisplay(formShiftStart)}
                   </span>
                 </div>
@@ -1627,13 +1603,12 @@ export default function EmployeeManagement() {
                       borderRadius: '8px', fontSize: '0.875rem', outline: 'none'
                     }}
                   />
-                  <span style={{ fontSize: '0.7rem', color: '#6b7280', marginTop: '0.25rem', display: 'block' }}>
+                  <span style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '0.25rem', display: 'block' }}>
                     {formatTimeDisplay(formShiftEnd)}
                   </span>
                 </div>
               </div>
 
-              {/* Grace Period */}
               <div style={{ marginBottom: '1.25rem' }}>
                 <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: '0.375rem' }}>
                   Late-Mark Grace Period (Minutes)
@@ -1649,12 +1624,11 @@ export default function EmployeeManagement() {
                     borderRadius: '8px', fontSize: '0.875rem', outline: 'none'
                   }}
                 />
-                <span style={{ fontSize: '0.7rem', color: '#6b7280', marginTop: '0.25rem', display: 'block' }}>
+                <span style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '0.25rem', display: 'block' }}>
                   Staff arriving up to {formShiftGrace} minutes past {formatTimeDisplay(formShiftStart)} won&apos;t be marked late.
                 </span>
               </div>
 
-              {/* Calculated Summary Preview */}
               <div style={{ padding: '0.75rem', backgroundColor: '#f0f9ff', borderRadius: '8px', marginBottom: '1.5rem', border: '1px solid #bae6fd' }}>
                 <div style={{ fontSize: '0.8125rem', color: '#0369a1', fontWeight: 600 }}>
                   Calculated Duration: {calcDuration(formShiftStart, formShiftEnd)}
@@ -1692,9 +1666,7 @@ export default function EmployeeManagement() {
         </div>
       )}
 
-      {/* ======================================================== */}
-      {/* MODAL: DELETE CONFIRMATION (STAFF / DEPT / SHIFT) */}
-      {/* ======================================================== */}
+      {/* MODAL: DELETE CONFIRMATION */}
       {(modalMode === 'delete_employee' || modalMode === 'delete_dept' || modalMode === 'delete_shift') && activeItem && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 1000,
@@ -1709,7 +1681,7 @@ export default function EmployeeManagement() {
               <Trash2 size={24} />
             </div>
 
-            <h3 style={{ textAlign: 'center', fontSize: '1.125rem', fontWeight: 700, color: '#111827', margin: '0 0 0.5rem 0' }}>
+            <h3 style={{ textAlign: 'center', fontSize: '1.125rem', fontWeight: 700, color: '#0f172a', margin: '0 0 0.5rem 0' }}>
               {modalMode === 'delete_employee' 
                 ? `Deactivate ${activeItem.displayName}?`
                 : modalMode === 'delete_dept'
@@ -1717,9 +1689,9 @@ export default function EmployeeManagement() {
                 : `Delete Shift "${activeItem.name}"?`}
             </h3>
 
-            <p style={{ textAlign: 'center', fontSize: '0.875rem', color: '#6b7280', margin: '0 0 1.5rem 0', lineHeight: 1.5 }}>
+            <p style={{ textAlign: 'center', fontSize: '0.875rem', color: '#64748b', margin: '0 0 1.5rem 0', lineHeight: 1.5 }}>
               {modalMode === 'delete_employee' && (
-                <>This will remove <strong>{activeItem.displayName}</strong> from active daily sync. Historical attendance logs are preserved safely.</>
+                <>This will remove <strong>{activeItem.displayName}</strong> from active daily lists. Historical attendance logs are preserved safely.</>
               )}
               {modalMode === 'delete_dept' && (
                 <>Are you sure you want to remove the <strong>{activeItem.name}</strong> department?</>
