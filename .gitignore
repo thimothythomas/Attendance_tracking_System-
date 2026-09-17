@@ -65,3 +65,5 @@ attendance-dashboard/
 sync_cron_log.txt
 *.log
 
+_temp_*
+
