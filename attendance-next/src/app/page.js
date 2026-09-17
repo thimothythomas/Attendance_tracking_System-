@@ -23,11 +23,6 @@ function App() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      fetchAttendanceData()
-    }
-  }, [isAuthenticated])
 
   const fetchAttendanceData = async () => {
     setLoading(true)
@@ -126,6 +121,13 @@ function App() {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      fetchAttendanceData()
+    }
+  }, [isAuthenticated])
 
   const parseDate = (dateStr) => {
     if (!dateStr) return new Date()
