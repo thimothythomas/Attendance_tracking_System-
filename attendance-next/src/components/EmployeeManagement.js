@@ -8,22 +8,9 @@ import {
   Fingerprint, Plus, ArrowRight, User
 } from 'lucide-react';
 import EmployeeProfileModal from './EmployeeProfileModal';
+import { INITIAL_DEPARTMENTS, INITIAL_SHIFTS, getStoredConfig, saveStoredConfig, enrichEmployees } from '@/lib/workforceStore';
 
-const INITIAL_DEPARTMENTS = [
-  { id: 'dept_1', name: 'Development', description: 'Software engineering, web & backend systems', color: '#4f46e5', bg: '#e0e7ff' },
-  { id: 'dept_2', name: 'Design', description: 'UI/UX, visual design, and product branding', color: '#7e22ce', bg: '#f3e8ff' },
-  { id: 'dept_3', name: 'Marketing', description: 'Digital marketing, growth, and client relations', color: '#c2410c', bg: '#ffedd5' },
-  { id: 'dept_4', name: 'Operations', description: 'Office management, logistics, and company operations', color: '#0369a1', bg: '#e0f2fe' },
-  { id: 'dept_5', name: 'Human Resources', description: 'People operations, recruitment, and staff welfare', color: '#0f766e', bg: '#ccfbf1' },
-  { id: 'dept_6', name: 'Quality Assurance', description: 'Testing, verification, and performance audits', color: '#b45309', bg: '#fef3c7' }
-];
 
-const INITIAL_SHIFTS = [
-  { id: 'shift_gen', name: 'General Shift', startTime: '09:30', endTime: '18:30', displayHours: '09:30 AM - 06:30 PM', graceMinutes: 15, duration: '9h 00m' },
-  { id: 'shift_morn', name: 'Morning Shift', startTime: '08:30', endTime: '17:30', displayHours: '08:30 AM - 05:30 PM', graceMinutes: 15, duration: '9h 00m' },
-  { id: 'shift_eve', name: 'Evening Shift', startTime: '11:00', endTime: '20:00', displayHours: '11:00 AM - 08:00 PM', graceMinutes: 15, duration: '9h 00m' },
-  { id: 'shift_flex', name: 'Flexible Timing', startTime: '09:00', endTime: '17:00', displayHours: 'Flexible (8h required)', graceMinutes: 0, duration: '8h 00m' }
-];
 
 function formatTimeDisplay(timeStr) {
   if (!timeStr) return '';
@@ -47,7 +34,7 @@ function calcDuration(start, end) {
   return `${hrs}h ${mins > 0 ? mins + 'm' : '00m'}`;
 }
 
-export default function EmployeeManagement({ initialSubTab = 'staff', rawData = [] }) {
+export default function EmployeeManagement({ initialSubTab = 'staff', rawData = [], onEmployeesUpdated, onDepartmentsUpdated, onShiftsUpdated }) {
   const [activeSubTab, setActiveSubTab] = useState(initialSubTab);
 
   useEffect(() => {
@@ -118,12 +105,17 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
   };
 
   useEffect(() => {
-    const storedDepts = getStoredConfig('inxl_departments', INITIAL_DEPARTMENTS);
-    const storedShifts = getStoredConfig('inxl_shifts', INITIAL_SHIFTS);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setDepartments(storedDepts);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setShifts(storedShifts);
+    const reload = () => {
+      const storedDepts = getStoredConfig('inxl_departments', INITIAL_DEPARTMENTS);
+      const storedShifts = getStoredConfig('inxl_shifts', INITIAL_SHIFTS);
+      setDepartments(storedDepts);
+      setShifts(storedShifts);
+    };
+    reload();
+
+    const handleDataEvent = () => reload();
+    window.addEventListener('inxl_data_updated', handleDataEvent);
+    return () => window.removeEventListener('inxl_data_updated', handleDataEvent);
   }, []);
 
   // Fetch Employees from Supabase
@@ -138,26 +130,9 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
 
       if (error) throw error;
 
-      const meta = getStoredConfig('inxl_employee_meta', {});
-
-      const enriched = (data || []).map(emp => {
-        const isDel = (emp.employee_name && emp.employee_name.startsWith('del_')) || 
-                      (emp.employee_code && String(emp.employee_code).startsWith('del_'));
-        const m = meta[emp.employee_id] || {};
-
-        return {
-          ...emp,
-          is_active: !isDel,
-          displayName: isDel ? emp.employee_name.replace(/^del_/, '') : emp.employee_name,
-          displayCode: isDel ? String(emp.employee_code).replace(/^del_/, '').split('_')[0] : emp.employee_code,
-          department_name: m.department_name || emp.department_name || (emp.department_id === '2' ? 'Design' : emp.department_id === '3' ? 'Marketing' : 'Development'),
-          shift_id: m.shift_id || 'shift_gen',
-          shift_name: m.shift_name || emp.shift || 'General Shift (09:30 AM - 06:30 PM)',
-          designation: m.designation || emp.designation || 'Team Member'
-        };
-      });
-
+      const enriched = enrichEmployees(data || []);
       setEmployees(enriched);
+      if (onEmployeesUpdated) onEmployeesUpdated(enriched);
     } catch (err) {
       console.error('Failed to load employees:', err);
       setErrorMsg(err.message || 'Could not load employees from database.');

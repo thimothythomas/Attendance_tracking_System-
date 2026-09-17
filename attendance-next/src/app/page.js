@@ -7,6 +7,8 @@ import { supabase } from '@/lib/supabase'
 import EmployeeManagement from '@/components/EmployeeManagement'
 import OverviewDashboard from '@/components/OverviewDashboard'
 import SettingsView from '@/components/SettingsView'
+import EmployeeProfileModal from '@/components/EmployeeProfileModal'
+import { INITIAL_DEPARTMENTS, INITIAL_SHIFTS, getStoredConfig, enrichEmployees } from '@/lib/workforceStore'
 
 function App() {
   const [searchTerm, setSearchTerm] = useState('')
@@ -529,7 +531,35 @@ function App() {
                       }}
                     >
                       <td className="emp-id">{emp.emp_id}</td>
-                      <td className="emp-name"><strong>{emp.name}</strong></td>
+                      <td className="emp-name">
+                        <strong>{emp.name}</strong>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{emp.designation || 'Team Member'}</div>
+                      </td>
+                      <td>
+                        <span style={{
+                          display: 'inline-block',
+                          padding: '0.2rem 0.65rem',
+                          borderRadius: '12px',
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          backgroundColor: departments.find(d => d.name === emp.department_name)?.bg || '#e0e7ff',
+                          color: departments.find(d => d.name === emp.department_name)?.color || '#4f46e5'
+                        }}>
+                          {emp.department_name || 'Development'}
+                        </span>
+                      </td>
+                      <td>
+                        <span style={{
+                          display: 'inline-block',
+                          padding: '0.2rem 0.5rem',
+                          borderRadius: '6px',
+                          fontSize: '0.75rem',
+                          backgroundColor: '#f1f5f9',
+                          color: '#475569'
+                        }}>
+                          {emp.shift_name ? emp.shift_name.split('(')[0].trim() : 'General Shift'}
+                        </span>
+                      </td>
                       <td>{emp.totalDays}</td>
                       <td className="text-success font-medium">{emp.present}</td>
                       <td className="text-danger font-medium">{emp.absent}</td>
@@ -547,12 +577,37 @@ function App() {
                           <span className="progress-text">{percent}%</span>
                         </div>
                       </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const fullEmp = allEmployees.find(ae => String(ae.employee_code) === String(emp.emp_id) || String(ae.employee_id) === String(emp.emp_id)) || emp;
+                            setViewingProfileEmp(fullEmp);
+                          }}
+                          style={{
+                            backgroundColor: '#eff6ff',
+                            border: '1px solid #bfdbfe',
+                            color: '#1d4ed8',
+                            borderRadius: '6px',
+                            padding: '0.35rem 0.65rem',
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.3rem'
+                          }}
+                        >
+                          360° Profile
+                        </button>
+                      </td>
                     </tr>
                   )
                 })
               ) : (
                 <tr>
-                  <td colSpan="7" style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '3rem' }}>
+                  <td colSpan="9" style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '3rem' }}>
                     No employees found.
                   </td>
                 </tr>
@@ -957,29 +1012,25 @@ function App() {
           <OverviewDashboard
             employees={allEmployees}
             rawData={rawData}
-            departments={[
-              { id: 'dept_1', name: 'Development', color: '#4f46e5', bg: '#e0e7ff' },
-              { id: 'dept_2', name: 'Design', color: '#7e22ce', bg: '#f3e8ff' },
-              { id: 'dept_3', name: 'Marketing', color: '#c2410c', bg: '#ffedd5' },
-              { id: 'dept_4', name: 'Operations', color: '#0369a1', bg: '#e0f2fe' },
-              { id: 'dept_5', name: 'Human Resources', color: '#0f766e', bg: '#ccfbf1' },
-              { id: 'dept_6', name: 'Quality Assurance', color: '#b45309', bg: '#fef3c7' }
-            ]}
-            shifts={[
-              { id: 'shift_gen', name: 'General Shift', displayHours: '09:30 AM - 06:30 PM' },
-              { id: 'shift_morn', name: 'Morning Shift', displayHours: '08:30 AM - 05:30 PM' },
-              { id: 'shift_eve', name: 'Evening Shift', displayHours: '11:00 AM - 08:00 PM' },
-              { id: 'shift_flex', name: 'Flexible Timing', displayHours: 'Flexible (8h required)' }
-            ]}
-            onNavigate={(tab) => setActiveTab(tab)}
+            departments={departments}
+            shifts={shifts}
+            onNavigate={(tab, filter) => {
+              if (filter) setSelectedDeptFilter(filter);
+              setActiveTab(tab);
+            }}
             onOpenAddEmployee={() => setActiveTab('employees')}
+            onViewEmployee={(emp) => setViewingProfileEmp(emp)}
+            onSelectDepartment={(deptName) => {
+              setSelectedDeptFilter(deptName);
+              setActiveTab('timesheets');
+            }}
           />
         ) : activeTab === 'employees' ? (
-          <EmployeeManagement initialSubTab="staff" rawData={rawData} />
+          <EmployeeManagement initialSubTab="staff" rawData={rawData} onEmployeesUpdated={fetchAttendanceData} onDepartmentsUpdated={(d) => setDepartments(d)} onShiftsUpdated={(s) => setShifts(s)} />
         ) : activeTab === 'departments' ? (
-          <EmployeeManagement initialSubTab="departments" rawData={rawData} />
+          <EmployeeManagement initialSubTab="departments" rawData={rawData} onEmployeesUpdated={fetchAttendanceData} onDepartmentsUpdated={(d) => setDepartments(d)} onShiftsUpdated={(s) => setShifts(s)} />
         ) : activeTab === 'shifts' ? (
-          <EmployeeManagement initialSubTab="shifts" rawData={rawData} />
+          <EmployeeManagement initialSubTab="shifts" rawData={rawData} onEmployeesUpdated={fetchAttendanceData} onDepartmentsUpdated={(d) => setDepartments(d)} onShiftsUpdated={(s) => setShifts(s)} />
         ) : activeTab === 'settings' ? (
           <SettingsView onLogout={() => {
             if (typeof window !== 'undefined') localStorage.removeItem('inxl_auth');
@@ -1131,6 +1182,15 @@ function App() {
               </div>
             </div>
           </div>
+        )}
+      {viewingProfileEmp && (
+          <EmployeeProfileModal
+            employee={viewingProfileEmp}
+            rawData={rawData}
+            shifts={shifts}
+            departments={departments}
+            onClose={() => setViewingProfileEmp(null)}
+          />
         )}
       </main>
     </div>

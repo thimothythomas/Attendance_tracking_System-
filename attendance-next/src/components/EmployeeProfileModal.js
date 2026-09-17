@@ -20,11 +20,18 @@ export default function EmployeeProfileModal({
   // Filter attendance logs for this employee
   const employeeLogs = useMemo(() => {
     if (!employee || !rawData || rawData.length === 0) return [];
-    return rawData.filter(r => 
-      String(r.emp_id) === String(employee.employee_id) || 
-      String(r.emp_id) === String(employee.employee_code) ||
-      r.name?.toLowerCase() === employee.displayName?.toLowerCase()
-    );
+    const eId = String(employee.employee_id || '');
+    const eCode = String(employee.employee_code || employee.displayCode || employee.emp_id || '');
+    const eName = (employee.displayName || employee.employee_name || employee.name || '').toLowerCase();
+
+    return rawData.filter(r => {
+      const rId = String(r.emp_id || '');
+      const rCode = String(r.emp_code || '');
+      const rName = (r.name || '').toLowerCase();
+      return (eId && (rId === eId || rCode === eId)) ||
+             (eCode && (rId === eCode || rCode === eCode)) ||
+             (eName && rName === eName);
+    });
   }, [rawData, employee]);
 
   // Compute attendance stats
@@ -35,11 +42,17 @@ export default function EmployeeProfileModal({
     let totalMinutes = 0;
 
     employeeLogs.forEach(log => {
-      if (log.present > 0) present++;
-      if (log.absent > 0) absent++;
-      if (log.lateBy && log.lateBy !== '0' && log.lateBy !== '00:00') late++;
-      if (log.duration) {
-        const parts = log.duration.split(':');
+      const isP = log.present > 0 || log.status === 'Present' || (log.punch_records && typeof log.punch_records === 'string' && log.punch_records.trim() !== '');
+      const isA = !isP && (log.absent > 0 || log.status === 'Absent');
+      if (isP) present++;
+      else if (isA) absent++;
+
+      const lateStr = log.late_by || log.lateBy;
+      if (lateStr && lateStr !== '0' && lateStr !== '00:00' && lateStr !== '-') late++;
+
+      const durStr = log.total_duration || log.duration;
+      if (durStr) {
+        const parts = durStr.split(':');
         if (parts.length >= 2) {
           const h = parseInt(parts[0], 10) || 0;
           const m = parseInt(parts[1], 10) || 0;

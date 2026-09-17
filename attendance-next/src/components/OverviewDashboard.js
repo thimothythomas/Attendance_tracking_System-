@@ -13,7 +13,9 @@ export default function OverviewDashboard({
   departments = [],
   shifts = [],
   onNavigate,
-  onOpenAddEmployee
+  onOpenAddEmployee,
+  onViewEmployee,
+  onSelectDepartment
 }) {
   // Compute active employees
   const activeEmployees = useMemo(() => {
@@ -36,9 +38,15 @@ export default function OverviewDashboard({
   // Attendance stats for latest date
   const todayStats = useMemo(() => {
     const recordsToday = rawData.filter(r => r.date === latestDateStr);
-    const presentList = recordsToday.filter(r => r.present > 0);
+    const presentList = recordsToday.filter(r => {
+      if (r.status === 'Present') return true;
+      if (typeof r.present === 'number' && r.present > 0) return true;
+      if (r.punch_records && typeof r.punch_records === 'string' && r.punch_records.trim() !== '') return true;
+      return false;
+    });
     const lateList = presentList.filter(r => {
-      if (!r.lateBy || r.lateBy === '0' || r.lateBy === '00:00') return false;
+      const lb = r.late_by || r.lateBy;
+      if (!lb || lb === '0' || lb === '00:00' || lb === '-') return false;
       return true;
     });
 
@@ -274,18 +282,41 @@ export default function OverviewDashboard({
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {todayStats.presentList.slice(0, 6).map(rec => {
-                const emp = activeEmployees.find(e => String(e.employee_id) === String(rec.emp_id) || String(e.employee_code) === String(rec.emp_id));
-                const isLate = rec.lateBy && rec.lateBy !== '0' && rec.lateBy !== '00:00';
+                const emp = activeEmployees.find(e => 
+                  String(e.employee_id) === String(rec.emp_id) || 
+                  String(e.employee_code) === String(rec.emp_id) ||
+                  String(e.employee_code) === String(rec.emp_code) ||
+                  (e.displayName && rec.name && e.displayName.toLowerCase() === rec.name.toLowerCase())
+                );
+                const lateVal = rec.late_by || rec.lateBy;
+                const isLate = lateVal && lateVal !== '0' && lateVal !== '00:00' && lateVal !== '-';
+                const inTimeVal = rec.in_time || rec.inTime || '--:--';
                 const initials = (rec.name || 'E').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
 
                 return (
                   <div
-                    key={rec.id || rec.emp_id}
+                    key={rec.id || rec.emp_id || rec.name}
+                    onClick={() => {
+                      if (onViewEmployee) {
+                        onViewEmployee(emp || {
+                          employee_id: rec.emp_id,
+                          employee_code: rec.emp_id,
+                          employee_name: rec.name,
+                          displayName: rec.name,
+                          department_name: emp?.department_name || 'Staff',
+                          shift_name: emp?.shift_name || 'General Shift'
+                        });
+                      }
+                    }}
                     style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                       padding: '0.75rem 1rem', borderRadius: '10px',
-                      backgroundColor: '#f8fafc', border: '1px solid #f1f5f9'
+                      backgroundColor: '#f8fafc', border: '1px solid #f1f5f9',
+                      cursor: onViewEmployee ? 'pointer' : 'default',
+                      transition: 'all 0.15s ease'
                     }}
+                    onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#f1f5f9'; }}
+                    onMouseOut={(e) => { e.currentTarget.style.backgroundColor = '#f8fafc'; }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                       <div style={{
@@ -301,7 +332,7 @@ export default function OverviewDashboard({
                           {rec.name}
                         </div>
                         <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                          {emp?.department_name || 'Staff'} • In: {rec.inTime || '--:--'}
+                          {emp?.department_name || 'Staff'} • In: {inTimeVal}
                         </div>
                       </div>
                     </div>
@@ -313,7 +344,7 @@ export default function OverviewDashboard({
                         backgroundColor: isLate ? '#fee2e2' : '#dcfce7',
                         color: isLate ? '#b91c1c' : '#15803d'
                       }}>
-                        {isLate ? `Late by ${rec.lateBy}` : 'On Time'}
+                        {isLate ? `Late by ${lateVal}` : 'On Time'}
                       </span>
                     </div>
                   </div>
