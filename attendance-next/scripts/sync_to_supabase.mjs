@@ -179,11 +179,11 @@ $rows | ConvertTo-Json -Depth 2 | Out-File -FilePath "${TEMP_JSON.replace(/\\/g,
       early_by:        r.EarlyBy || '00:00',
       overtime:        r.OverTime || '00:00',
       punch_records:   r.PunchRecords || '',
-      present:         r.Present === 'True',
-      absent:          r.Absent === 'True',
+      present:         parseFloat(r.Present) > 0,
+      absent:          parseFloat(r.Absent) > 0,
       status:          `${r.Status || ''}||${shiftName}`,
-      weekly_off:      r.WeeklyOff === 'True',
-      holiday:         r.Holiday === 'True',
+      weekly_off:      r.WeeklyOff === '1' || r.WeeklyOff === 'True',
+      holiday:         r.Holiday === '1' || r.Holiday === 'True',
     }
   })
 
