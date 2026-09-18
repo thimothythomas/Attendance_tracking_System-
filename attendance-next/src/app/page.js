@@ -537,12 +537,20 @@ function App() {
       </div>
 
       <div className="content-card">
+        <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: '#1e293b' }}>Employee Attendance Summary</h3>
+            <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>Click any row to view individual daily records</p>
+          </div>
+        </div>
         <div className="table-container">
           <table>
             <thead>
               <tr>
                 <th>Emp ID</th>
                 <th>Employee Name</th>
+                <th>Department</th>
+                <th>Shift</th>
                 <th>Total Days</th>
                 <th>Present</th>
                 <th>Absent</th>
@@ -608,31 +616,6 @@ function App() {
                           </div>
                           <span className="progress-text">{percent}%</span>
                         </div>
-                      </td>
-                      <td style={{ textAlign: 'center' }}>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const fullEmp = allEmployees.find(ae => String(ae.employee_code) === String(emp.emp_id) || String(ae.employee_id) === String(emp.emp_id)) || emp;
-                            setViewingProfileEmp(fullEmp);
-                          }}
-                          style={{
-                            backgroundColor: '#eff6ff',
-                            border: '1px solid #bfdbfe',
-                            color: '#1d4ed8',
-                            borderRadius: '6px',
-                            padding: '0.35rem 0.65rem',
-                            fontSize: '0.75rem',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '0.3rem'
-                          }}
-                        >
-                          360° Profile
-                        </button>
                       </td>
                     </tr>
                   )
@@ -701,32 +684,159 @@ function App() {
     })
     const otLeaders = Array.from(overtimeStats.values()).filter(o => o.otMinutes > 0).sort((a, b) => b.otMinutes - a.otMinutes).slice(0, 10)
 
+    // 4. Department performance
+    const deptStats = new Map()
+    filteredEmployees.forEach(emp => {
+      const dept = emp.department_name || 'Unassigned'
+      if (!deptStats.has(dept)) deptStats.set(dept, { dept, present: 0, total: 0, employees: 0 })
+      const s = deptStats.get(dept)
+      s.present += emp.present
+      s.total += emp.totalDays
+      s.employees++
+    })
+    const deptPerformance = Array.from(deptStats.values())
+      .map(d => ({ ...d, rate: d.total > 0 ? Math.round((d.present / d.total) * 100) : 0 }))
+      .sort((a, b) => b.rate - a.rate)
+
+    // 5. Early departures
+    const earlyStats = new Map()
+    filteredRawData.forEach(record => {
+      if (!earlyStats.has(record.emp_id)) {
+        earlyStats.set(record.emp_id, { emp_id: record.emp_id, name: record.name, earlyCount: 0 })
+      }
+      const stat = earlyStats.get(record.emp_id)
+      if (record.early_going_by && record.early_going_by !== '00:00' && record.early_going_by !== '-') stat.earlyCount++
+    })
+    const earlyLeaders = Array.from(earlyStats.values()).filter(e => e.earlyCount > 0).sort((a, b) => b.earlyCount - a.earlyCount).slice(0, 10)
+
+    // 6. Weekday attendance pattern
+    const weekdayMap = { 1: 'Monday', 2: 'Tuesday', 3: 'Wednesday', 4: 'Thursday', 5: 'Friday' }
+    const weekdayStats = { 1: { present: 0, total: 0 }, 2: { present: 0, total: 0 }, 3: { present: 0, total: 0 }, 4: { present: 0, total: 0 }, 5: { present: 0, total: 0 } }
+    filteredRawData.forEach(record => {
+      const d = parseDate(record.date)
+      const day = d.getDay()
+      if (day >= 1 && day <= 5) {
+        weekdayStats[day].total++
+        if (record.status === 'Present') weekdayStats[day].present++
+      }
+    })
+
+    // KPI numbers
+    const totalPresent = filteredEmployees.reduce((s, e) => s + e.present, 0)
+    const totalDaysAll = filteredEmployees.reduce((s, e) => s + e.totalDays, 0)
+    const overallRate = totalDaysAll > 0 ? Math.round((totalPresent / totalDaysAll) * 100) : 0
+    const totalOTHrs = Array.from(overtimeStats.values()).reduce((s, o) => s + o.otMinutes, 0) / 60
+    const totalLate = Array.from(punctuality.values()).reduce((s, p) => s + p.lateCount, 0)
+    const totalEarlyCount = Array.from(earlyStats.values()).reduce((s, e) => s + e.earlyCount, 0)
+    const perfectAttendees = filteredEmployees.filter(e => e.totalDays > 0 && e.absent === 0)
+
+    // Build per-employee scorecard
+    const employeeScorecard = filteredEmployees.map(emp => {
+      const punch = punctuality.get(emp.emp_id) || { lateCount: 0, earlyCount: 0 }
+      const ot = overtimeStats.get(emp.emp_id) || { otMinutes: 0 }
+      const early = earlyStats.get(emp.emp_id) || { earlyCount: 0 }
+      const rate = emp.totalDays > 0 ? Math.round((emp.present / emp.totalDays) * 100) : 0
+      let grade = 'Excellent'
+      let gradeColor = '#15803d'
+      let gradeBg = '#dcfce7'
+      if (rate < 60) { grade = 'Poor'; gradeColor = '#dc2626'; gradeBg = '#fee2e2' }
+      else if (rate < 75) { grade = 'Fair'; gradeColor = '#d97706'; gradeBg = '#fef3c7' }
+      else if (rate < 90) { grade = 'Good'; gradeColor = '#0284c7'; gradeBg = '#e0f2fe' }
+      return { ...emp, rate, lateCount: punch.lateCount, earlyCount: early.earlyCount, otHrs: (ot.otMinutes / 60).toFixed(1), grade, gradeColor, gradeBg }
+    }).sort((a, b) => b.rate - a.rate)
+
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-        <div className="content-card" style={{ padding: '1.5rem' }}>
-          <h3 style={{ marginBottom: '1rem', color: 'var(--text-primary)' }}>Daily Attendance Trend</h3>
-          <div className="table-container custom-scroll" style={{ maxHeight: '400px' }}>
-            <table>
-              <thead style={{ position: 'sticky', top: 0, zIndex: 1, backgroundColor: '#f8fafc' }}>
-                <tr>
-                  <th>Date</th>
-                  <th>Attendance Rate</th>
-                  <th>Present / Total</th>
+
+        {/* KPI Summary Row */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem' }}>
+          {[
+            { label: 'Overall Attendance', value: `${overallRate}%`, sub: `${totalPresent} present days`, color: overallRate > 80 ? '#22c55e' : overallRate > 60 ? '#f59e0b' : '#ef4444' },
+            { label: 'Perfect Attendance', value: perfectAttendees.length, sub: 'zero absences', color: '#6366f1' },
+            { label: 'Late Arrivals', value: totalLate, sub: 'total late punch-ins', color: '#ef4444' },
+            { label: 'Early Departures', value: totalEarlyCount, sub: 'left before shift end', color: '#f59e0b' },
+            { label: 'Total Overtime', value: `${totalOTHrs.toFixed(1)}h`, sub: 'across all staff', color: '#0ea5e9' },
+          ].map(kpi => (
+            <div key={kpi.label} style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '1.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+              <p style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 0.5rem 0' }}>{kpi.label}</p>
+              <p style={{ fontSize: '1.75rem', fontWeight: 700, color: kpi.color, margin: '0 0 0.2rem 0', lineHeight: 1 }}>{kpi.value}</p>
+              <p style={{ fontSize: '0.73rem', color: '#94a3b8', margin: 0 }}>{kpi.sub}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Employee Performance Scorecard — main section */}
+        <div className="content-card">
+          <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#1e293b' }}>Employee Performance Scorecard</h3>
+              <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>Full breakdown of every employee's attendance, punctuality & overtime for the selected period</p>
+            </div>
+            <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{employeeScorecard.length} employees · sorted by attendance rate</span>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+              <thead>
+                <tr style={{ backgroundColor: '#f8fafc', color: '#475569', fontWeight: 600 }}>
+                  <th style={{ padding: '0.875rem 1.25rem', textAlign: 'left' }}>Employee</th>
+                  <th style={{ padding: '0.875rem 1rem', textAlign: 'left' }}>Department</th>
+                  <th style={{ padding: '0.875rem 1rem', textAlign: 'center' }}>Total Days</th>
+                  <th style={{ padding: '0.875rem 1rem', textAlign: 'center' }}>Present</th>
+                  <th style={{ padding: '0.875rem 1rem', textAlign: 'center' }}>Absent</th>
+                  <th style={{ padding: '0.875rem 1rem', textAlign: 'center' }}>Late</th>
+                  <th style={{ padding: '0.875rem 1rem', textAlign: 'center' }}>Early Out</th>
+                  <th style={{ padding: '0.875rem 1rem', textAlign: 'center' }}>Overtime</th>
+                  <th style={{ padding: '0.875rem 1.25rem', textAlign: 'center' }}>Attendance %</th>
+                  <th style={{ padding: '0.875rem 1.25rem', textAlign: 'center' }}>Grade</th>
                 </tr>
               </thead>
               <tbody>
-                {trends.map(t => (
-                  <tr key={t.date}>
-                    <td className="font-medium whitespace-nowrap">{t.date}</td>
-                    <td>
-                      <div className="progress-cell" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ minWidth: '40px', fontWeight: '500' }}>{t.rate}%</span>
-                        <div className="progress-bar-container" style={{ width: '150px', height: '8px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
-                          <div style={{ height: '100%', width: `${t.rate}%`, backgroundColor: t.rate > 80 ? 'var(--success)' : t.rate > 50 ? 'var(--warning)' : 'var(--danger)' }}></div>
+                {employeeScorecard.map((emp, i) => (
+                  <tr key={emp.emp_id}
+                    className="clickable-row"
+                    style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer', backgroundColor: i % 2 === 0 ? 'white' : '#fafafa' }}
+                    onClick={() => { setSelectedEmployee(emp); setStatusFilter('All') }}>
+                    <td style={{ padding: '0.875rem 1.25rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                        <div style={{ width: '34px', height: '34px', borderRadius: '50%', backgroundColor: '#e0e7ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.85rem', color: '#4f46e5', flexShrink: 0 }}>
+                          {emp.name.charAt(0)}
+                        </div>
+                        <div>
+                          <p style={{ margin: 0, fontWeight: 600, color: '#1e293b' }}>{emp.name}</p>
+                          <p style={{ margin: 0, fontSize: '0.72rem', color: '#94a3b8' }}>{emp.designation || 'Team Member'}</p>
                         </div>
                       </div>
                     </td>
-                    <td style={{ color: 'var(--text-secondary)' }}><strong style={{ color: 'var(--text-primary)' }}>{t.present}</strong> / {t.present + t.absent}</td>
+                    <td style={{ padding: '0.875rem 1rem' }}>
+                      <span style={{ padding: '0.2rem 0.65rem', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 600, backgroundColor: '#e0e7ff', color: '#4f46e5' }}>
+                        {emp.department_name || 'Development'}
+                      </span>
+                    </td>
+                    <td style={{ padding: '0.875rem 1rem', textAlign: 'center', color: '#475569', fontWeight: 500 }}>{emp.totalDays}</td>
+                    <td style={{ padding: '0.875rem 1rem', textAlign: 'center', color: '#16a34a', fontWeight: 700 }}>{emp.present}</td>
+                    <td style={{ padding: '0.875rem 1rem', textAlign: 'center', color: emp.absent > 0 ? '#dc2626' : '#94a3b8', fontWeight: 700 }}>{emp.absent}</td>
+                    <td style={{ padding: '0.875rem 1rem', textAlign: 'center', color: emp.lateCount > 0 ? '#dc2626' : '#94a3b8', fontWeight: 600 }}>
+                      {emp.lateCount > 0 ? `${emp.lateCount}×` : '—'}
+                    </td>
+                    <td style={{ padding: '0.875rem 1rem', textAlign: 'center', color: emp.earlyCount > 0 ? '#d97706' : '#94a3b8', fontWeight: 600 }}>
+                      {emp.earlyCount > 0 ? `${emp.earlyCount}×` : '—'}
+                    </td>
+                    <td style={{ padding: '0.875rem 1rem', textAlign: 'center', color: parseFloat(emp.otHrs) > 0 ? '#0284c7' : '#94a3b8', fontWeight: 600 }}>
+                      {parseFloat(emp.otHrs) > 0 ? `${emp.otHrs}h` : '—'}
+                    </td>
+                    <td style={{ padding: '0.875rem 1.25rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
+                        <div style={{ width: '80px', height: '6px', backgroundColor: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${emp.rate}%`, backgroundColor: emp.rate > 89 ? '#22c55e' : emp.rate > 74 ? '#0ea5e9' : emp.rate > 59 ? '#f59e0b' : '#ef4444', borderRadius: '3px' }}></div>
+                        </div>
+                        <span style={{ fontWeight: 700, minWidth: '36px', color: emp.rate > 89 ? '#16a34a' : emp.rate > 74 ? '#0284c7' : emp.rate > 59 ? '#d97706' : '#dc2626' }}>{emp.rate}%</span>
+                      </div>
+                    </td>
+                    <td style={{ padding: '0.875rem 1.25rem', textAlign: 'center' }}>
+                      <span style={{ padding: '0.25rem 0.65rem', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 700, backgroundColor: emp.gradeBg, color: emp.gradeColor }}>
+                        {emp.grade}
+                      </span>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -734,76 +844,79 @@ function App() {
           </div>
         </div>
 
+        {/* Department Performance + Weekday Pattern */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
           <div className="content-card" style={{ padding: '1.5rem' }}>
-            <h3 style={{ marginBottom: '1rem', color: 'var(--text-primary)' }}>Most Late Arrivals</h3>
-            <div className="table-container">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Employee Name</th>
-                    <th>Days Late</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lateLeaders.length > 0 ? lateLeaders.map(l => (
-                    <tr 
-                      key={l.name} 
-                      className="clickable-row" 
-                      style={{ cursor: 'pointer' }}
-                      onClick={() => {
-                        const emp = employeeSummaries.find(e => e.emp_id === l.emp_id)
-                        if (emp) {
-                          setSelectedEmployee(emp)
-                          setStatusFilter('Late')
-                        }
-                      }}
-                    >
-                      <td className="emp-name"><strong>{l.name}</strong></td>
-                      <td className="text-danger font-medium" style={{ fontSize: '1.1rem' }}>{l.lateCount}</td>
-                    </tr>
-                  )) : <tr><td colSpan="2" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>No late arrivals recorded.</td></tr>}
-                </tbody>
-              </table>
+            <h3 style={{ margin: '0 0 0.25rem 0', color: 'var(--text-primary)' }}>Department Breakdown</h3>
+            <p style={{ margin: '0 0 1rem 0', fontSize: '0.8rem', color: '#64748b' }}>Attendance rate by department</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {deptPerformance.map(d => (
+                <div key={d.dept}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.875rem', color: '#1e293b' }}>{d.dept}</span>
+                    <span style={{ fontSize: '0.875rem', color: d.rate > 80 ? '#16a34a' : d.rate > 60 ? '#d97706' : '#dc2626', fontWeight: 700 }}>{d.rate}%</span>
+                  </div>
+                  <div style={{ height: '8px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${d.rate}%`, backgroundColor: d.rate > 80 ? '#22c55e' : d.rate > 60 ? '#f59e0b' : '#ef4444', borderRadius: '4px' }}></div>
+                  </div>
+                  <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.73rem', color: '#94a3b8' }}>{d.employees} employees · {d.present}/{d.total} days</p>
+                </div>
+              ))}
             </div>
           </div>
 
           <div className="content-card" style={{ padding: '1.5rem' }}>
-            <h3 style={{ marginBottom: '1rem', color: 'var(--text-primary)' }}>Top Overtime (Hours)</h3>
-            <div className="table-container">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Employee Name</th>
-                    <th>Total OT</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {otLeaders.length > 0 ? otLeaders.map(o => (
-                    <tr 
-                      key={o.name} 
-                      className="clickable-row" 
-                      style={{ cursor: 'pointer' }}
-                      onClick={() => {
-                        const emp = employeeSummaries.find(e => e.emp_id === o.emp_id)
-                        if (emp) {
-                          setSelectedEmployee(emp)
-                          setStatusFilter('Overtime')
-                        }
-                      }}
-                    >
-                      <td className="emp-name"><strong>{o.name}</strong></td>
-                      <td className="text-success font-medium" style={{ fontSize: '1.1rem' }}>{(o.otMinutes / 60).toFixed(1)}h</td>
-                    </tr>
-                  )) : <tr><td colSpan="2" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>No overtime recorded.</td></tr>}
-                </tbody>
-              </table>
+            <h3 style={{ margin: '0 0 0.25rem 0', color: 'var(--text-primary)' }}>Weekday Attendance Pattern</h3>
+            <p style={{ margin: '0 0 1rem 0', fontSize: '0.8rem', color: '#64748b' }}>Which days have the strongest attendance</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {[1, 2, 3, 4, 5].map(day => {
+                const s = weekdayStats[day]
+                const rate = s.total > 0 ? Math.round((s.present / s.total) * 100) : 0
+                return (
+                  <div key={day}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+                      <span style={{ fontWeight: 600, fontSize: '0.875rem', color: '#1e293b' }}>{weekdayMap[day]}</span>
+                      <span style={{ fontSize: '0.875rem', color: rate > 80 ? '#16a34a' : rate > 60 ? '#d97706' : '#dc2626', fontWeight: 700 }}>{rate}%</span>
+                    </div>
+                    <div style={{ height: '8px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${rate}%`, backgroundColor: rate > 80 ? '#22c55e' : rate > 60 ? '#f59e0b' : '#ef4444', borderRadius: '4px' }}></div>
+                    </div>
+                    <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.73rem', color: '#94a3b8' }}>{s.present} present out of {s.total} records</p>
+                  </div>
+                )
+              })}
             </div>
           </div>
         </div>
+
+        {/* Perfect Attendance Spotlight */}
+        <div className="content-card" style={{ padding: '1.5rem' }}>
+          <h3 style={{ margin: '0 0 0.25rem 0', color: 'var(--text-primary)' }}>⭐ Perfect Attendance Spotlight</h3>
+          <p style={{ margin: '0 0 1.25rem 0', fontSize: '0.8rem', color: '#64748b' }}>Employees with zero absences in the selected period</p>
+          {perfectAttendees.length > 0 ? (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
+              {perfectAttendees.map(e => (
+                <div key={e.emp_id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '50px', padding: '0.5rem 1rem' }}>
+                  <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: '0.85rem', flexShrink: 0 }}>
+                    {e.name.charAt(0)}
+                  </div>
+                  <div>
+                    <p style={{ margin: 0, fontWeight: 600, fontSize: '0.875rem', color: '#15803d' }}>{e.name}</p>
+                    <p style={{ margin: 0, fontSize: '0.7rem', color: '#4ade80' }}>{e.present} days present · 100%</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>No employees with perfect attendance in this period.</p>
+          )}
+        </div>
+
       </div>
     )
   }
+
+
 
   const dateRange = useMemo(() => {
     if (!filteredRawData || filteredRawData.length === 0) return null;
@@ -906,8 +1019,8 @@ function App() {
         <nav className="sidebar-nav">
           <ul>
             <li 
-              className={activeTab === 'dashboard' ? 'active' : ''}
-              onClick={() => setActiveTab('dashboard')}
+              className={activeTab === 'overview' ? 'active' : ''}
+              onClick={() => setActiveTab('overview')}
             >
               <LayoutDashboard size={20} />
               <span>Dashboard</span>
@@ -918,6 +1031,13 @@ function App() {
             >
               <Users size={20} />
               <span>Employees</span>
+            </li>
+            <li 
+              className={activeTab === 'timesheets' ? 'active' : ''}
+              onClick={() => setActiveTab('timesheets')}
+            >
+              <Clock size={20} />
+              <span>Attendance</span>
             </li>
             <li 
               className={activeTab === 'reports' ? 'active' : ''}
@@ -955,21 +1075,23 @@ function App() {
                activeTab === 'employees' ? 'Staff Directory & Personnel' :
                activeTab === 'departments' ? 'Department Organization' :
                activeTab === 'shifts' ? 'Shift Schedules & Timings' :
-               activeTab === 'timesheets' ? 'Timesheets & Attendance Logs' :
-               activeTab === 'reports' ? 'Attendance Reports' : 'System Settings'}
+               activeTab === 'timesheets' ? 'Attendance' :
+               activeTab === 'reports' ? 'Attendance Reports' :
+               activeTab === 'settings' ? 'System Settings' : 'Workforce Overview'}
             </h1>
             <p className="subtitle" style={{ marginTop: '0.25rem' }}>
               {activeTab === 'overview' ? 'Executive workforce operations, active headcounts, and daily pulse' :
                activeTab === 'employees' ? 'Manage staff profiles, biometric IDs, and workforce assignments' :
                activeTab === 'departments' ? 'Company departmental units, leads, and team allocations' :
                activeTab === 'shifts' ? 'Office shift timings, grace periods, and work hours' :
+               activeTab === 'timesheets' ? 'Biometric timesheet records and daily attendance logs' :
                activeTab === 'settings' ? 'Biometric device sync status and company configuration' :
                dateRange ? <span style={{ fontWeight: '500', color: '#64748b', fontSize: '0.85rem' }}>Report Period: {dateRange}</span> :
                'Daily biometric punch records and attendance calculations'}
             </p>
           </div>
           
-          {(activeTab === 'timesheets' || activeTab === 'reports' || activeTab === 'dashboard') && (
+          {(activeTab === 'timesheets' || activeTab === 'reports') && (
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
             {availableMonths.length > 0 && (
               <select
