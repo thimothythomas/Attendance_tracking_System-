@@ -48,12 +48,16 @@ export function enrichEmployees(employeesData = []) {
     .map(emp => {
       const m = meta[emp.employee_id] || meta[emp.employee_code] || {};
       const defaultDept = emp.department_id === '2' ? 'Design' : emp.department_id === '3' ? 'Marketing' : 'Development';
+      const cleanName = emp.employee_name || emp.name || `Staff #${emp.employee_code || emp.employee_id || ''}`;
+      const cleanCode = emp.employee_code || emp.emp_id || emp.employee_id || '';
 
       return {
         ...emp,
-        is_active: true,
-        displayName: emp.employee_name,
-        displayCode: emp.employee_code,
+        name: cleanName,
+        emp_id: cleanCode,
+        is_active: emp.is_active !== false,
+        displayName: cleanName,
+        displayCode: cleanCode,
         department_name: m.department_name || emp.department_name || defaultDept,
         shift_id: m.shift_id || 'shift_gen',
         shift_name: m.shift_name || emp.shift || 'General Shift (09:30 AM - 06:30 PM)',

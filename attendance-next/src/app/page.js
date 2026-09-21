@@ -1,13 +1,15 @@
 "use client";
 
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { Users, Building, Clock, CheckCircle, XCircle, Calendar, Search, X, LayoutDashboard, FileText, Settings, LogOut, Download, Upload, Lock, Eye, EyeOff } from 'lucide-react'
+import { Users, Building, Clock, CheckCircle, XCircle, Calendar, Search, X, LayoutDashboard, FileText, Settings, LogOut, Download, Upload, Lock, Eye, EyeOff, ArrowUpRight } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import EmployeeManagement from '@/components/EmployeeManagement'
 import OverviewDashboard from '@/components/OverviewDashboard'
 import SettingsView from '@/components/SettingsView'
 import EmployeeProfileModal from '@/components/EmployeeProfileModal'
+import CalendarView from '@/components/CalendarView'
+import { getIndianHolidays } from '@/lib/indianHolidays'
 import { INITIAL_DEPARTMENTS, INITIAL_SHIFTS, getStoredConfig, enrichEmployees } from '@/lib/workforceStore'
 
 function App() {
@@ -501,38 +503,69 @@ function App() {
 
   const renderDashboard = () => (
     <>
-      <div className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-icon users-icon"><Users size={24} /></div>
-          <div className="stat-details">
-            <h3>Total Employees</h3>
-            <p className="stat-value">{filteredEmployees.length}</p>
+      <div className="bento-grid" style={{ marginBottom: '1.5rem' }}>
+        {/* Total Staff Bento Card */}
+        <div className="bento-card" style={{ gridColumn: 'span 4' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#161245', fontWeight: 700, fontSize: '0.95rem' }}>
+              <Users size={18} />
+              <span>Total Workforce</span>
+            </div>
+            <span className="bento-corner-arrow">
+              <ArrowUpRight size={16} />
+            </span>
           </div>
+          <div style={{ fontSize: '2.5rem', fontWeight: 900, color: '#161245', letterSpacing: '-0.03em', lineHeight: 1, marginBottom: '0.5rem' }}>
+            {filteredEmployees.length}
+          </div>
+          <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>
+            Active registered personnel
+          </p>
         </div>
-        <div className="stat-card">
-          <div className="stat-icon check-icon"><Calendar size={24} /></div>
-          <div className="stat-details">
-            <h3>Total Working Days</h3>
-            <p className="stat-value">
-              {(() => {
-                const totalWorkingDays = filteredEmployees.length > 0 ? Math.max(...filteredEmployees.map(emp => emp.totalDays)) : 0;
-                return totalWorkingDays;
-              })()}
-            </p>
+
+        {/* Total Working Days - VIBRANT LIME GREEN */}
+        <div className="bento-card bento-card-lime" style={{ gridColumn: 'span 4' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#161245', fontWeight: 800, fontSize: '0.95rem' }}>
+              <Calendar size={18} />
+              <span>Working Days</span>
+            </div>
+            <span className="bento-corner-arrow" style={{ background: '#161245', color: '#90d152' }}>
+              <ArrowUpRight size={16} />
+            </span>
           </div>
+          <div style={{ fontSize: '2.5rem', fontWeight: 900, color: '#161245', letterSpacing: '-0.03em', lineHeight: 1, marginBottom: '0.5rem' }}>
+            {(() => {
+              const totalWorkingDays = filteredEmployees.length > 0 ? Math.max(...filteredEmployees.map(emp => emp.totalDays)) : 0;
+              return totalWorkingDays;
+            })()}
+          </div>
+          <p style={{ margin: 0, fontSize: '0.8rem', color: 'rgba(22, 18, 69, 0.75)', fontWeight: 600 }}>
+            Scheduled operational days
+          </p>
         </div>
-        <div className="stat-card">
-          <div className="stat-icon x-icon"><XCircle size={24} /></div>
-          <div className="stat-details">
-            <h3>Absence Ratio</h3>
-            <p className="stat-value">
-              {(() => {
-                const totalAbsent = filteredEmployees.reduce((sum, emp) => sum + emp.absent, 0);
-                const totalDays = filteredEmployees.reduce((sum, emp) => sum + emp.totalDays, 0);
-                return totalDays > 0 ? Math.round((totalAbsent / totalDays) * 100) + '%' : '0%';
-              })()}
-            </p>
+
+        {/* Absence Ratio - MATTE BLACK */}
+        <div className="bento-card bento-card-dark" style={{ gridColumn: 'span 4' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#f8fafc', fontWeight: 700, fontSize: '0.95rem' }}>
+              <XCircle size={18} color="#90d152" />
+              <span>Absence Ratio</span>
+            </div>
+            <span style={{ fontSize: '0.725rem', padding: '0.2rem 0.6rem', borderRadius: '9999px', background: 'rgba(255,255,255,0.1)', color: '#90d152', fontWeight: 700 }}>
+              Period
+            </span>
           </div>
+          <div style={{ fontSize: '2.5rem', fontWeight: 900, color: '#ffffff', letterSpacing: '-0.03em', lineHeight: 1, marginBottom: '0.5rem' }}>
+            {(() => {
+              const totalAbsent = filteredEmployees.reduce((sum, emp) => sum + emp.absent, 0);
+              const totalDays = filteredEmployees.reduce((sum, emp) => sum + emp.totalDays, 0);
+              return totalDays > 0 ? Math.round((totalAbsent / totalDays) * 100) + '%' : '0%';
+            })()}
+          </div>
+          <p style={{ margin: 0, fontSize: '0.8rem', color: '#94a3b8', fontWeight: 500 }}>
+            Unscheduled absences & leaves
+          </p>
         </div>
       </div>
 
@@ -748,92 +781,135 @@ function App() {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
 
-        {/* KPI Summary Row */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem' }}>
-          {[
-            { label: 'Overall Attendance', value: `${overallRate}%`, sub: `${totalPresent} present days`, color: overallRate > 80 ? '#22c55e' : overallRate > 60 ? '#f59e0b' : '#ef4444' },
-            { label: 'Perfect Attendance', value: perfectAttendees.length, sub: 'zero absences', color: '#6366f1' },
-            { label: 'Late Arrivals', value: totalLate, sub: 'total late punch-ins', color: '#ef4444' },
-            { label: 'Early Departures', value: totalEarlyCount, sub: 'left before shift end', color: '#f59e0b' },
-            { label: 'Total Overtime', value: `${totalOTHrs.toFixed(1)}h`, sub: 'across all staff', color: '#0ea5e9' },
-          ].map(kpi => (
-            <div key={kpi.label} style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '1.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-              <p style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 0.5rem 0' }}>{kpi.label}</p>
-              <p style={{ fontSize: '1.75rem', fontWeight: 700, color: kpi.color, margin: '0 0 0.2rem 0', lineHeight: 1 }}>{kpi.value}</p>
-              <p style={{ fontSize: '0.73rem', color: '#94a3b8', margin: 0 }}>{kpi.sub}</p>
+        {/* KPI Summary Bento Row */}
+        <div className="bento-grid">
+          {/* Card 1: Overall Attendance - LIME GREEN BENTO */}
+          <div className="bento-card bento-card-lime" style={{ gridColumn: 'span 4' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+              <span style={{ fontSize: '0.8rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#161245' }}>
+                Overall Attendance
+              </span>
+              <span className="bento-corner-arrow" style={{ background: '#161245', color: '#90d152' }}>
+                <ArrowUpRight size={14} />
+              </span>
             </div>
-          ))}
+            <div style={{ fontSize: '2.5rem', fontWeight: 900, color: '#161245', letterSpacing: '-0.03em', lineHeight: 1, marginBottom: '0.4rem' }}>
+              {overallRate}%
+            </div>
+            <p style={{ margin: 0, fontSize: '0.8rem', color: 'rgba(22, 18, 69, 0.75)', fontWeight: 600 }}>
+              {totalPresent} total present days logged
+            </p>
+          </div>
+
+          {/* Card 2: Perfect Attendance - MATTE BLACK BENTO */}
+          <div className="bento-card bento-card-dark" style={{ gridColumn: 'span 4' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+              <span style={{ fontSize: '0.8rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#f8fafc' }}>
+                Perfect Records
+              </span>
+              <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '9999px', background: 'rgba(255,255,255,0.1)', color: '#90d152', fontWeight: 700 }}>
+                100% On-Duty
+              </span>
+            </div>
+            <div style={{ fontSize: '2.5rem', fontWeight: 900, color: '#90d152', letterSpacing: '-0.03em', lineHeight: 1, marginBottom: '0.4rem' }}>
+              {perfectAttendees.length}
+            </div>
+            <p style={{ margin: 0, fontSize: '0.8rem', color: '#94a3b8', fontWeight: 500 }}>
+              Staff with zero absences this period
+            </p>
+          </div>
+
+          {/* Card 3: Total Overtime - CLEAN WHITE BENTO */}
+          <div className="bento-card" style={{ gridColumn: 'span 4' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+              <span style={{ fontSize: '0.8rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b' }}>
+                Total Overtime
+              </span>
+              <span className="bento-corner-arrow">
+                <Clock size={14} />
+              </span>
+            </div>
+            <div style={{ fontSize: '2.5rem', fontWeight: 900, color: '#161245', letterSpacing: '-0.03em', lineHeight: 1, marginBottom: '0.4rem' }}>
+              {totalOTHrs.toFixed(1)}h
+            </div>
+            <div style={{ display: 'flex', gap: '1rem', fontSize: '0.775rem', color: '#64748b', fontWeight: 600 }}>
+              <span>Late: {totalLate}×</span>
+              <span>Early Out: {totalEarlyCount}×</span>
+            </div>
+          </div>
         </div>
 
         {/* Employee Performance Scorecard — main section */}
-        <div className="content-card">
-          <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div className="bento-card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ padding: '1.25rem 1.75rem', borderBottom: '1px solid var(--card-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#ffffff' }}>
             <div>
-              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#1e293b' }}>Employee Performance Scorecard</h3>
-              <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>Full breakdown of every employee's attendance, punctuality & overtime for the selected period</p>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#161245', letterSpacing: '-0.02em' }}>Employee Performance Scorecard</h3>
+              <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.825rem', color: '#64748b' }}>Full breakdown of every employee's attendance, punctuality & overtime for the selected period</p>
             </div>
-            <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{employeeScorecard.length} employees · sorted by attendance rate</span>
+            <span style={{ fontSize: '0.775rem', fontWeight: 600, color: '#161245', background: '#f1f5f9', padding: '0.3rem 0.75rem', borderRadius: '9999px' }}>
+              {employeeScorecard.length} Staff Members
+            </span>
           </div>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
               <thead>
-                <tr style={{ backgroundColor: '#f8fafc', color: '#475569', fontWeight: 600 }}>
-                  <th style={{ padding: '0.875rem 1.25rem', textAlign: 'left' }}>Employee</th>
-                  <th style={{ padding: '0.875rem 1rem', textAlign: 'left' }}>Department</th>
-                  <th style={{ padding: '0.875rem 1rem', textAlign: 'center' }}>Total Days</th>
-                  <th style={{ padding: '0.875rem 1rem', textAlign: 'center' }}>Present</th>
-                  <th style={{ padding: '0.875rem 1rem', textAlign: 'center' }}>Absent</th>
-                  <th style={{ padding: '0.875rem 1rem', textAlign: 'center' }}>Late</th>
-                  <th style={{ padding: '0.875rem 1rem', textAlign: 'center' }}>Early Out</th>
-                  <th style={{ padding: '0.875rem 1rem', textAlign: 'center' }}>Overtime</th>
-                  <th style={{ padding: '0.875rem 1.25rem', textAlign: 'center' }}>Attendance %</th>
-                  <th style={{ padding: '0.875rem 1.25rem', textAlign: 'center' }}>Grade</th>
+                <tr style={{ backgroundColor: '#f8fafc', color: '#64748b', fontWeight: 700 }}>
+                  <th style={{ padding: '1rem 1.5rem', textAlign: 'left' }}>Employee</th>
+                  <th style={{ padding: '1rem 1rem', textAlign: 'left' }}>Department</th>
+                  <th style={{ padding: '1rem 1rem', textAlign: 'center' }}>Total Days</th>
+                  <th style={{ padding: '1rem 1rem', textAlign: 'center' }}>Present</th>
+                  <th style={{ padding: '1rem 1rem', textAlign: 'center' }}>Absent</th>
+                  <th style={{ padding: '1rem 1rem', textAlign: 'center' }}>Late</th>
+                  <th style={{ padding: '1rem 1rem', textAlign: 'center' }}>Early Out</th>
+                  <th style={{ padding: '1rem 1rem', textAlign: 'center' }}>Overtime</th>
+                  <th style={{ padding: '1rem 1.5rem', textAlign: 'center' }}>Attendance %</th>
+                  <th style={{ padding: '1rem 1.5rem', textAlign: 'center' }}>Grade</th>
                 </tr>
               </thead>
               <tbody>
                 {employeeScorecard.map((emp, i) => (
                   <tr key={emp.emp_id}
                     className="clickable-row"
-                    style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer', backgroundColor: i % 2 === 0 ? 'white' : '#fafafa' }}
+                    style={{ borderBottom: '1px solid var(--card-border)', cursor: 'pointer', backgroundColor: i % 2 === 0 ? '#ffffff' : '#fafafa' }}
                     onClick={() => { setSelectedEmployee(emp); setStatusFilter('All') }}>
-                    <td style={{ padding: '0.875rem 1.25rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                        <div style={{ width: '34px', height: '34px', borderRadius: '50%', backgroundColor: '#e0e7ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.85rem', color: '#4f46e5', flexShrink: 0 }}>
-                          {emp.name.charAt(0)}
+                    <td style={{ padding: '1rem 1.5rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#161245', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.85rem', color: '#90d152', flexShrink: 0 }}>
+                          {(emp?.name || '#').charAt(0)}
                         </div>
                         <div>
-                          <p style={{ margin: 0, fontWeight: 600, color: '#1e293b' }}>{emp.name}</p>
-                          <p style={{ margin: 0, fontSize: '0.72rem', color: '#94a3b8' }}>{emp.designation || 'Team Member'}</p>
+                          <p style={{ margin: 0, fontWeight: 700, color: '#161245' }}>{emp?.name || `Staff #${emp?.emp_id}`}</p>
+                          <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b' }}>{emp?.designation || 'Team Member'}</p>
                         </div>
                       </div>
                     </td>
-                    <td style={{ padding: '0.875rem 1rem' }}>
-                      <span style={{ padding: '0.2rem 0.65rem', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 600, backgroundColor: '#e0e7ff', color: '#4f46e5' }}>
-                        {emp.department_name || 'Development'}
+                    <td style={{ padding: '1rem 1rem' }}>
+                      <span style={{ padding: '0.25rem 0.75rem', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 700, backgroundColor: '#f1f5f9', color: '#334155' }}>
+                        {emp.department_name || 'Operations'}
                       </span>
                     </td>
-                    <td style={{ padding: '0.875rem 1rem', textAlign: 'center', color: '#475569', fontWeight: 500 }}>{emp.totalDays}</td>
-                    <td style={{ padding: '0.875rem 1rem', textAlign: 'center', color: '#16a34a', fontWeight: 700 }}>{emp.present}</td>
-                    <td style={{ padding: '0.875rem 1rem', textAlign: 'center', color: emp.absent > 0 ? '#dc2626' : '#94a3b8', fontWeight: 700 }}>{emp.absent}</td>
-                    <td style={{ padding: '0.875rem 1rem', textAlign: 'center', color: emp.lateCount > 0 ? '#dc2626' : '#94a3b8', fontWeight: 600 }}>
+                    <td style={{ padding: '1rem 1rem', textAlign: 'center', color: '#475569', fontWeight: 600 }}>{emp.totalDays}</td>
+                    <td style={{ padding: '1rem 1rem', textAlign: 'center', color: '#15803d', fontWeight: 800 }}>{emp.present}</td>
+                    <td style={{ padding: '1rem 1rem', textAlign: 'center', color: emp.absent > 0 ? '#dc2626' : '#94a3b8', fontWeight: 700 }}>{emp.absent}</td>
+                    <td style={{ padding: '1rem 1rem', textAlign: 'center', color: emp.lateCount > 0 ? '#dc2626' : '#94a3b8', fontWeight: 600 }}>
                       {emp.lateCount > 0 ? `${emp.lateCount}×` : '—'}
                     </td>
-                    <td style={{ padding: '0.875rem 1rem', textAlign: 'center', color: emp.earlyCount > 0 ? '#d97706' : '#94a3b8', fontWeight: 600 }}>
+                    <td style={{ padding: '1rem 1rem', textAlign: 'center', color: emp.earlyCount > 0 ? '#d97706' : '#94a3b8', fontWeight: 600 }}>
                       {emp.earlyCount > 0 ? `${emp.earlyCount}×` : '—'}
                     </td>
-                    <td style={{ padding: '0.875rem 1rem', textAlign: 'center', color: parseFloat(emp.otHrs) > 0 ? '#0284c7' : '#94a3b8', fontWeight: 600 }}>
+                    <td style={{ padding: '1rem 1rem', textAlign: 'center', color: parseFloat(emp.otHrs) > 0 ? '#161245' : '#94a3b8', fontWeight: 700 }}>
                       {parseFloat(emp.otHrs) > 0 ? `${emp.otHrs}h` : '—'}
                     </td>
-                    <td style={{ padding: '0.875rem 1.25rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
-                        <div style={{ width: '80px', height: '6px', backgroundColor: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
-                          <div style={{ height: '100%', width: `${emp.rate}%`, backgroundColor: emp.rate > 89 ? '#22c55e' : emp.rate > 74 ? '#0ea5e9' : emp.rate > 59 ? '#f59e0b' : '#ef4444', borderRadius: '3px' }}></div>
+                    <td style={{ padding: '1rem 1.5rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', justifyContent: 'center' }}>
+                        <div style={{ width: '90px', height: '8px', backgroundColor: '#e2e8f0', borderRadius: '9999px', overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${emp.rate}%`, backgroundColor: emp.rate > 80 ? '#90d152' : emp.rate > 60 ? '#f59e0b' : '#ef4444', borderRadius: '9999px' }}></div>
                         </div>
-                        <span style={{ fontWeight: 700, minWidth: '36px', color: emp.rate > 89 ? '#16a34a' : emp.rate > 74 ? '#0284c7' : emp.rate > 59 ? '#d97706' : '#dc2626' }}>{emp.rate}%</span>
+                        <span style={{ fontWeight: 800, minWidth: '38px', color: '#161245' }}>{emp.rate}%</span>
                       </div>
                     </td>
-                    <td style={{ padding: '0.875rem 1.25rem', textAlign: 'center' }}>
-                      <span style={{ padding: '0.25rem 0.65rem', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 700, backgroundColor: emp.gradeBg, color: emp.gradeColor }}>
+                    <td style={{ padding: '1rem 1.5rem', textAlign: 'center' }}>
+                      <span style={{ padding: '0.3rem 0.8rem', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 800, backgroundColor: emp.grade === 'Excellent' ? '#dcfce7' : emp.gradeBg, color: emp.grade === 'Excellent' ? '#15803d' : emp.gradeColor }}>
                         {emp.grade}
                       </span>
                     </td>
@@ -945,49 +1021,49 @@ function App() {
   }
 
   const renderLogin = () => (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', backgroundColor: '#f3f4f6' }}>
-      <div style={{ backgroundColor: 'white', padding: '2.5rem', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)', width: '100%', maxWidth: '400px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        <img src="https://i0.wp.com/inxldigital.com/wp-content/uploads/2021/04/cropped-inXL-LOGO-1.jpeg?resize=300%2C100&ssl=1" alt="INXL Digital Logo" style={{ maxWidth: '80%', height: 'auto', marginBottom: '2rem' }} />
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', backgroundColor: '#f4f6fb' }}>
+      <div style={{ backgroundColor: 'white', padding: '2.5rem', borderRadius: '24px', boxShadow: '0 20px 40px -10px rgba(0, 0, 0, 0.05)', border: '1px solid rgba(0, 0, 0, 0.06)', width: '100%', maxWidth: '420px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <img src="https://i0.wp.com/inxldigital.com/wp-content/uploads/2021/04/cropped-inXL-LOGO-1.jpeg?resize=300%2C100&ssl=1" alt="INXL Digital Logo" style={{ maxWidth: '80%', height: 'auto', marginBottom: '1.75rem' }} />
         
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#e0e7ff', color: '#4f46e5', width: '48px', height: '48px', borderRadius: '50%', marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#161245', color: '#90d152', width: '52px', height: '52px', borderRadius: '18px', marginBottom: '1.25rem', boxShadow: '0 4px 12px rgba(22, 18, 69, 0.2)' }}>
           <Lock size={24} />
         </div>
         
-        <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#111827', marginBottom: '0.5rem', textAlign: 'center' }}>Welcome Back</h2>
-        <p style={{ color: '#6b7280', marginBottom: '2rem', textAlign: 'center', fontSize: '0.95rem' }}>Please sign in to access the dashboard</p>
+        <h2 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#161245', marginBottom: '0.35rem', textAlign: 'center', letterSpacing: '-0.02em' }}>Welcome Back</h2>
+        <p style={{ color: '#6b7280', marginBottom: '1.75rem', textAlign: 'center', fontSize: '0.875rem', fontWeight: 500 }}>Please sign in to access the workforce dashboard</p>
         
         {loginError && (
-          <div style={{ backgroundColor: '#fee2e2', color: '#b91c1c', padding: '0.75rem', borderRadius: '6px', marginBottom: '1.5rem', width: '100%', fontSize: '0.9rem', textAlign: 'center' }}>
+          <div style={{ backgroundColor: '#fee2e2', color: '#b91c1c', padding: '0.75rem', borderRadius: '12px', marginBottom: '1.25rem', width: '100%', fontSize: '0.85rem', textAlign: 'center', fontWeight: 600 }}>
             {loginError}
           </div>
         )}
         
         <form onSubmit={handleLogin} style={{ width: '100%' }}>
           <div style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'block', color: '#374151', fontSize: '0.9rem', fontWeight: '500', marginBottom: '0.5rem' }}>Username</label>
+            <label style={{ display: 'block', color: '#374151', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Username</label>
             <input 
               type="text" 
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              style={{ width: '100%', padding: '0.75rem', borderRadius: '6px', border: '1px solid #d1d5db', outline: 'none', transition: 'border-color 0.2s', backgroundColor: 'transparent', color: '#111827' }}
+              style={{ width: '100%', padding: '0.75rem 1rem', borderRadius: '9999px', border: '1px solid #d1d5db', outline: 'none', backgroundColor: '#f9fafb', color: '#161245', fontSize: '0.9rem' }}
               placeholder="Enter your username"
             />
           </div>
           
-          <div style={{ marginBottom: '2rem' }}>
-            <label style={{ display: 'block', color: '#374151', fontSize: '0.9rem', fontWeight: '500', marginBottom: '0.5rem' }}>Password</label>
+          <div style={{ marginBottom: '1.75rem' }}>
+            <label style={{ display: 'block', color: '#374151', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Password</label>
             <div style={{ position: 'relative' }}>
               <input 
                 type={showPassword ? "text" : "password"} 
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                style={{ width: '100%', padding: '0.75rem', paddingRight: '2.5rem', borderRadius: '6px', border: '1px solid #d1d5db', outline: 'none', transition: 'border-color 0.2s', backgroundColor: 'transparent', color: '#111827' }}
+                style={{ width: '100%', padding: '0.75rem 1rem', paddingRight: '2.5rem', borderRadius: '9999px', border: '1px solid #d1d5db', outline: 'none', backgroundColor: '#f9fafb', color: '#161245', fontSize: '0.9rem' }}
                 placeholder="••••••••"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', padding: '0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', padding: '0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
@@ -996,7 +1072,9 @@ function App() {
           
           <button 
             type="submit"
-            style={{ width: '100%', backgroundColor: '#4f46e5', color: 'white', padding: '0.75rem', borderRadius: '6px', border: 'none', fontSize: '1rem', fontWeight: '600', cursor: 'pointer', transition: 'background-color 0.2s' }}
+            style={{ width: '100%', backgroundColor: '#161245', color: 'white', padding: '0.8rem', borderRadius: '9999px', border: 'none', fontSize: '0.95rem', fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 4px 14px rgba(22, 18, 69, 0.2)' }}
+            onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#000'; }}
+            onMouseOut={(e) => { e.currentTarget.style.backgroundColor = '#161245'; }}
           >
             Sign In
           </button>
@@ -1047,6 +1125,13 @@ function App() {
               <span>Reports</span>
             </li>
             <li 
+              className={activeTab === 'calendar' ? 'active' : ''}
+              onClick={() => setActiveTab('calendar')}
+            >
+              <Calendar size={20} />
+              <span>Calendar</span>
+            </li>
+            <li 
               className={activeTab === 'settings' ? 'active' : ''}
               onClick={() => setActiveTab('settings')}
             >
@@ -1056,23 +1141,38 @@ function App() {
           </ul>
         </nav>
 
+        <div className="sidebar-sync-card">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.2rem' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#161245', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#16a34a', display: 'inline-block' }}></span>
+              Live Sync
+            </span>
+            <span style={{ fontSize: '0.675rem', fontWeight: 700, color: '#15803d', background: '#dcfce7', padding: '0.1rem 0.45rem', borderRadius: '9999px' }}>
+              ONLINE
+            </span>
+          </div>
+          <p style={{ margin: 0, fontSize: '0.725rem', color: '#64748b' }}>
+            Biometric interval: 15m
+          </p>
+        </div>
+
         <div className="sidebar-footer">
           <button className="logout-btn" onClick={() => {
             if (typeof window !== 'undefined') localStorage.removeItem('inxl_auth');
             setIsAuthenticated(false);
           }}>
-            <LogOut size={20} />
+            <LogOut size={16} />
             <span>Logout</span>
           </button>
         </div>
       </aside>
 
       <main className="main-content">
+        {activeTab !== 'overview' && (
         <header className="top-bar">
           <div>
             <h1>
-              {activeTab === 'overview' ? 'Workforce Overview' :
-               activeTab === 'employees' ? 'Staff Directory & Personnel' :
+              {activeTab === 'employees' ? 'Staff Directory & Personnel' :
                activeTab === 'departments' ? 'Department Organization' :
                activeTab === 'shifts' ? 'Shift Schedules & Timings' :
                activeTab === 'timesheets' ? 'Attendance' :
@@ -1080,8 +1180,7 @@ function App() {
                activeTab === 'settings' ? 'System Settings' : 'Workforce Overview'}
             </h1>
             <p className="subtitle" style={{ marginTop: '0.25rem' }}>
-              {activeTab === 'overview' ? 'Executive workforce operations, active headcounts, and daily pulse' :
-               activeTab === 'employees' ? 'Manage staff profiles, biometric IDs, and workforce assignments' :
+              {activeTab === 'employees' ? 'Manage staff profiles, biometric IDs, and workforce assignments' :
                activeTab === 'departments' ? 'Company departmental units, leads, and team allocations' :
                activeTab === 'shifts' ? 'Office shift timings, grace periods, and work hours' :
                activeTab === 'timesheets' ? 'Biometric timesheet records and daily attendance logs' :
@@ -1092,20 +1191,22 @@ function App() {
           </div>
           
           {(activeTab === 'timesheets' || activeTab === 'reports') && (
-          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
             {availableMonths.length > 0 && (
               <select
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(e.target.value)}
                 style={{
                   padding: '0.6rem 1rem',
-                  borderRadius: '8px',
-                  border: '1px solid #e2e8f0',
+                  borderRadius: '9999px',
+                  border: '1px solid rgba(0,0,0,0.08)',
                   backgroundColor: 'white',
                   outline: 'none',
-                  fontSize: '0.9rem',
+                  fontSize: '0.875rem',
+                  fontWeight: '600',
                   color: 'var(--text-primary)',
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
                 }}
               >
                 <option value="All">Last 90 days</option>
@@ -1115,7 +1216,7 @@ function App() {
               </select>
             )}
             <div className="search-box">
-              <Search size={18} className="search-icon" />
+              <Search size={16} className="search-icon" />
               <input 
                 type="text" 
                 placeholder="Search employees..." 
@@ -1135,32 +1236,29 @@ function App() {
               onClick={fetchAttendanceData}
               disabled={loading}
               style={{
-                display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1.2rem',
-                backgroundColor: 'white', color: 'var(--accent-color)', border: '1px solid var(--accent-color)', borderRadius: '8px', 
-                cursor: loading ? 'not-allowed' : 'pointer', fontWeight: '500', transition: 'all 0.2s',
-                opacity: loading ? 0.7 : 1
+                display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.65rem 1.2rem',
+                backgroundColor: 'white', color: '#161245', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '9999px', 
+                cursor: loading ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '0.875rem', transition: 'all 0.2s',
+                opacity: loading ? 0.7 : 1, boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
               }}
-              onMouseOver={(e) => !loading && (e.target.style.backgroundColor = '#f8fafc')}
-              onMouseOut={(e) => !loading && (e.target.style.backgroundColor = 'white')}
             >
-              {loading ? 'Syncing...' : 'Refresh Data'}
+              {loading ? 'Syncing...' : 'Refresh'}
             </button>
             <button 
               onClick={downloadData}
               style={{
-                display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1.2rem',
-                backgroundColor: 'var(--accent-color)', color: 'white', border: 'none', borderRadius: '8px', 
-                cursor: 'pointer', fontWeight: '500', transition: 'background-color 0.2s',
-                boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.65rem 1.25rem',
+                backgroundColor: '#161245', color: 'white', border: 'none', borderRadius: '9999px', 
+                cursor: 'pointer', fontWeight: '600', fontSize: '0.875rem', transition: 'background-color 0.2s',
+                boxShadow: '0 4px 12px rgba(17,24,39,0.15)'
               }}
-              onMouseOver={(e) => e.target.style.backgroundColor = 'var(--accent-hover)'}
-              onMouseOut={(e) => e.target.style.backgroundColor = 'var(--accent-color)'}
             >
-              <Download size={18} /> Export
+              <Download size={16} /> Export
             </button>
           </div>
           )}
         </header>
+        )}
 
         {activeTab === 'overview' ? (
           <OverviewDashboard
@@ -1219,56 +1317,81 @@ function App() {
           renderDashboard()
         ) : activeTab === 'reports' ? (
           renderReports()
+        ) : activeTab === 'calendar' ? (
+          <CalendarView events={[
+            ...getIndianHolidays(new Date().getFullYear() - 1),
+            ...getIndianHolidays(new Date().getFullYear()),
+            ...getIndianHolidays(new Date().getFullYear() + 1)
+          ]} />
         ) : null}
 
         {selectedEmployee && (
           <div className="modal-overlay" onClick={() => setSelectedEmployee(null)}>
-            <div className="modal-content" onClick={e => e.stopPropagation()}>
-              <div className="modal-header">
-                <h2>{selectedEmployee.name} <span className="emp-id-header">({selectedEmployee.emp_id})</span></h2>
-                <button className="close-button" onClick={() => setSelectedEmployee(null)}>
-                  <X size={24} />
+            <div className="modal-content" style={{ borderRadius: '24px', overflow: 'hidden', border: '1px solid rgba(0,0,0,0.08)' }} onClick={e => e.stopPropagation()}>
+              <div className="modal-header" style={{ backgroundColor: '#161245', color: 'white', borderBottom: '1px solid rgba(255,255,255,0.08)', padding: '1.5rem 2rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'white', margin: 0, letterSpacing: '-0.02em' }}>
+                    {selectedEmployee.name}
+                  </h2>
+                  <span style={{
+                    padding: '0.2rem 0.65rem', borderRadius: '9999px', fontSize: '0.725rem', fontWeight: 800,
+                    backgroundColor: '#90d152', color: '#161245'
+                  }}>
+                    ID: #{selectedEmployee.emp_id}
+                  </span>
+                </div>
+                <button
+                  className="close-button"
+                  onClick={() => setSelectedEmployee(null)}
+                  style={{
+                    backgroundColor: 'rgba(255,255,255,0.1)', color: '#94a3b8', border: 'none',
+                    width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                  }}
+                >
+                  <X size={18} />
                 </button>
               </div>
 
-              <div className="modal-overview">
-                <div className="modal-stat">
-                  <span className="label">Present</span>
-                  <span className="value text-success">{selectedEmployee.present}</span>
+              <div className="modal-overview" style={{ padding: '1.25rem 2rem', gap: '1rem', backgroundColor: '#f9fafb', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)' }}>
+                <div style={{ padding: '1rem', borderRadius: '16px', backgroundColor: '#90d152', textAlign: 'center' }}>
+                  <span style={{ fontSize: '0.6875rem', color: '#161245', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Present</span>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#161245', marginTop: '0.2rem', lineHeight: 1 }}>{selectedEmployee.present}</div>
                 </div>
-                <div className="modal-stat">
-                  <span className="label">Absent</span>
-                  <span className="value text-danger">{selectedEmployee.absent}</span>
+                <div style={{ padding: '1rem', borderRadius: '16px', backgroundColor: '#fee2e2', textAlign: 'center' }}>
+                  <span style={{ fontSize: '0.6875rem', color: '#b91c1c', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Absent</span>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#991b1b', marginTop: '0.2rem', lineHeight: 1 }}>{selectedEmployee.absent}</div>
                 </div>
-                <div className="modal-stat">
-                  <span className="label">Total Days</span>
-                  <span className="value">{selectedEmployee.totalDays}</span>
+                <div style={{ padding: '1rem', borderRadius: '16px', backgroundColor: '#ffffff', border: '1px solid rgba(0,0,0,0.06)', textAlign: 'center' }}>
+                  <span style={{ fontSize: '0.6875rem', color: '#6b7280', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Days</span>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#161245', marginTop: '0.2rem', lineHeight: 1 }}>{selectedEmployee.totalDays}</div>
                 </div>
-                <div className="modal-stat">
-                  <span className="label">Avg Hrs/Day</span>
-                  <span className="value text-accent">
+                <div style={{ padding: '1rem', borderRadius: '16px', backgroundColor: '#161245', textAlign: 'center' }}>
+                  <span style={{ fontSize: '0.6875rem', color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Avg Hrs/Day</span>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#90d152', marginTop: '0.2rem', lineHeight: 1 }}>
                     {selectedEmployee.present > 0
                       ? `${Math.floor((selectedEmployee.totalMinutesWorked / selectedEmployee.present) / 60)}h ${Math.round((selectedEmployee.totalMinutesWorked / selectedEmployee.present) % 60)}m`
                       : '0h 0m'}
-                  </span>
+                  </div>
                 </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 2rem 1rem' }}>
-                <h3 style={{ fontSize: '1.1rem', color: 'var(--text-secondary)' }}>Detailed Punch Records</h3>
-                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 2rem' }}>
+                <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#161245', margin: 0, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Detailed Punch Records</h3>
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
                   <select
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
                     style={{
-                      padding: '0.5rem 1rem',
-                      borderRadius: '6px',
-                      border: '1px solid var(--card-border)',
+                      padding: '0.55rem 1rem',
+                      borderRadius: '9999px',
+                      border: '1px solid rgba(0,0,0,0.1)',
                       outline: 'none',
                       backgroundColor: 'white',
-                      color: 'var(--text-primary)',
+                      color: '#161245',
                       cursor: 'pointer',
-                      fontWeight: '500'
+                      fontWeight: '600',
+                      fontSize: '0.8125rem'
                     }}
                   >
                     <option value="All">Show All Days</option>
@@ -1281,14 +1404,13 @@ function App() {
                   <button
                     onClick={downloadEmployeeData}
                     style={{
-                      display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem',
-                      backgroundColor: 'var(--accent-color)', color: 'white', border: 'none',
-                      borderRadius: '6px', cursor: 'pointer', fontWeight: '500', transition: 'background-color 0.2s',
+                      display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.55rem 1.25rem',
+                      backgroundColor: '#161245', color: 'white', border: 'none',
+                      borderRadius: '9999px', cursor: 'pointer', fontWeight: '700', fontSize: '0.8125rem',
+                      boxShadow: '0 4px 12px rgba(22, 18, 69, 0.15)'
                     }}
-                    onMouseOver={(e) => e.target.style.backgroundColor = 'var(--accent-hover)'}
-                    onMouseOut={(e) => e.target.style.backgroundColor = 'var(--accent-color)'}
                   >
-                    <Download size={16} /> Export
+                    <Download size={14} /> Export
                   </button>
                 </div>
               </div>

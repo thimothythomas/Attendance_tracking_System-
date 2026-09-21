@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { 
   Users, UserPlus, Search, Edit3, Trash2, CheckCircle2, 
   AlertCircle, Clock, Building, X, RefreshCw,
-  Fingerprint, Plus, ArrowRight, User
+  Fingerprint, Plus, ArrowRight, ArrowUpRight, LayoutGrid, List, User
 } from 'lucide-react';
 import EmployeeProfileModal from './EmployeeProfileModal';
 import { INITIAL_DEPARTMENTS, INITIAL_SHIFTS, getStoredConfig, saveStoredConfig, enrichEmployees } from '@/lib/workforceStore';
@@ -50,6 +50,11 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
 
   // Profile Modal State
   const [viewingProfileEmp, setViewingProfileEmp] = useState(null);
+
+  // View Mode: 'grid' (Bento cards) or 'table'
+  const [viewMode, setViewMode] = useState('grid');
+  // Team Filter: 'ALL' | 'ON_DUTY' | 'ON_LEAVE' | department name
+  const [teamFilter, setTeamFilter] = useState('ALL');
 
   // Notifications
   const [errorMsg, setErrorMsg] = useState('');
@@ -171,23 +176,88 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
     return counts;
   }, [shifts, employees]);
 
+  // Find latest attendance date in records or fallback to today
+  const latestDateStr = useMemo(() => {
+    if (!rawData || rawData.length === 0) {
+      return new Date().toISOString().split('T')[0];
+    }
+    let maxD = '';
+    rawData.forEach(r => {
+      if (r.date && r.date > maxD) maxD = r.date;
+    });
+    return maxD || new Date().toISOString().split('T')[0];
+  }, [rawData]);
+
+  // Attendance stats for latest date
+  const todayStats = useMemo(() => {
+    const recordsToday = (rawData || []).filter(r => r.date === latestDateStr);
+    const presentList = recordsToday.filter(r => {
+      if (r.status === 'Present') return true;
+      if (typeof r.present === 'number' && r.present > 0) return true;
+      if (r.punch_records && typeof r.punch_records === 'string' && r.punch_records.trim() !== '') return true;
+      return false;
+    });
+
+    const activeList = employees.filter(e => e.is_active);
+    const presentEmpIds = new Set();
+    const presentEmpCodes = new Set();
+    const presentEmpNames = new Set();
+
+    presentList.forEach(r => {
+      if (r.emp_id) presentEmpIds.add(String(r.emp_id).trim());
+      if (r.emp_code) presentEmpCodes.add(String(r.emp_code).trim());
+      if (r.name) presentEmpNames.add(r.name.trim().toLowerCase());
+    });
+
+    const isEmpOnDuty = (emp) => {
+      const code = String(emp.displayCode || emp.emp_id || emp.employee_code || '').trim();
+      const id = String(emp.employee_id || '').trim();
+      const name = (emp.displayName || emp.name || emp.employee_name || '').trim().toLowerCase();
+      return (code && (presentEmpIds.has(code) || presentEmpCodes.has(code))) ||
+             (id && presentEmpIds.has(id)) ||
+             (name && presentEmpNames.has(name));
+    };
+
+    const onDutyEmployees = activeList.filter(emp => isEmpOnDuty(emp));
+    const onLeaveEmployees = activeList.filter(emp => !isEmpOnDuty(emp));
+
+    return {
+      recordsToday,
+      presentList,
+      onDutyCount: onDutyEmployees.length,
+      onLeaveCount: onLeaveEmployees.length,
+      isEmployeeOnDuty: isEmpOnDuty
+    };
+  }, [rawData, latestDateStr, employees]);
+
   // Filtered Employees
   const filteredEmployees = useMemo(() => {
     return employees.filter(emp => {
       if (!showInactive && !emp.is_active) return false;
+
+      // Filter by Team Filter pill (ALL, ON_DUTY, ON_LEAVE, or Department Name)
+      if (teamFilter === 'ON_DUTY') {
+        if (!todayStats.isEmployeeOnDuty(emp)) return false;
+      } else if (teamFilter === 'ON_LEAVE') {
+        if (todayStats.isEmployeeOnDuty(emp)) return false;
+      } else if (teamFilter !== 'ALL') {
+        if (emp.department_name !== teamFilter) return false;
+      }
+
       if (selectedDeptFilter !== 'ALL' && emp.department_name !== selectedDeptFilter) return false;
       if (selectedShiftFilter !== 'ALL' && !emp.shift_name?.includes(selectedShiftFilter)) return false;
+
       if (searchQuery.trim() !== '') {
         const q = searchQuery.toLowerCase();
-        const matchName = emp.displayName?.toLowerCase().includes(q);
-        const matchCode = String(emp.displayCode)?.toLowerCase().includes(q);
-        const matchDept = emp.department_name?.toLowerCase().includes(q);
-        const matchDesig = emp.designation?.toLowerCase().includes(q);
+        const matchName = (emp.displayName || emp.name || emp.employee_name || '').toLowerCase().includes(q);
+        const matchCode = String(emp.displayCode || emp.emp_id || emp.employee_code || '').toLowerCase().includes(q);
+        const matchDept = (emp.department_name || '').toLowerCase().includes(q);
+        const matchDesig = (emp.designation || '').toLowerCase().includes(q);
         return matchName || matchCode || matchDept || matchDesig;
       }
       return true;
     });
-  }, [employees, showInactive, selectedDeptFilter, selectedShiftFilter, searchQuery]);
+  }, [employees, showInactive, teamFilter, selectedDeptFilter, selectedShiftFilter, searchQuery, todayStats]);
 
   // Employee CRUD
   const handleOpenAddEmployee = () => {
@@ -557,25 +627,75 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
       {/* Header & Sub-Navigation */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>
-            {activeSubTab === 'staff' ? 'Staff Directory & Personnel' : activeSubTab === 'departments' ? 'Department Organization' : 'Shift Schedules & Policies'}
-          </h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <h2 style={{ fontSize: '1.65rem', fontWeight: 800, color: '#161245', margin: 0, letterSpacing: '-0.02em' }}>
+              {activeSubTab === 'staff' ? 'Team Members' : activeSubTab === 'departments' ? 'Department Organization' : 'Shift Schedules & Policies'}
+            </h2>
+            {activeSubTab === 'staff' && (
+              <span style={{
+                fontSize: '0.8125rem', fontWeight: 700, padding: '0.25rem 0.85rem',
+                borderRadius: '9999px', backgroundColor: '#f1f5f9', color: '#161245',
+                border: '1px solid #e2e8f0'
+              }}>
+                {employees.filter(e => e.is_active).length} Staff
+              </span>
+            )}
+          </div>
           <p style={{ color: '#64748b', fontSize: '0.875rem', marginTop: '0.25rem', marginBottom: 0 }}>
-            Manage staff profiles, department structures, and shift timings.
+            {activeSubTab === 'staff' 
+              ? 'Directory of active personnel, live duty status, and employee profiles.'
+              : 'Manage staff profiles, department structures, and shift timings.'}
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          {activeSubTab === 'staff' && (
+            <div style={{
+              display: 'flex', alignItems: 'center', backgroundColor: '#ffffff',
+              padding: '3px', borderRadius: '9999px', border: '1px solid #e2e8f0',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+            }}>
+              <button
+                onClick={() => setViewMode('grid')}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '0.4rem',
+                  padding: '0.45rem 0.85rem', borderRadius: '9999px', border: 'none',
+                  backgroundColor: viewMode === 'grid' ? '#161245' : 'transparent',
+                  color: viewMode === 'grid' ? '#ffffff' : '#64748b',
+                  fontSize: '0.8125rem', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s'
+                }}
+                title="Bento Cards View"
+              >
+                <LayoutGrid size={15} />
+                <span>Cards</span>
+              </button>
+              <button
+                onClick={() => setViewMode('table')}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '0.4rem',
+                  padding: '0.45rem 0.85rem', borderRadius: '9999px', border: 'none',
+                  backgroundColor: viewMode === 'table' ? '#161245' : 'transparent',
+                  color: viewMode === 'table' ? '#ffffff' : '#64748b',
+                  fontSize: '0.8125rem', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s'
+                }}
+                title="Table View"
+              >
+                <List size={15} />
+                <span>Table</span>
+              </button>
+            </div>
+          )}
+
           <button
             onClick={fetchEmployees}
             style={{
               display: 'flex', alignItems: 'center', gap: '0.5rem',
-              padding: '0.625rem 1rem', borderRadius: '8px', border: '1px solid #d1d5db',
-              backgroundColor: 'white', color: '#374151', fontSize: '0.875rem', fontWeight: 500,
-              cursor: 'pointer', transition: 'all 0.15s'
+              padding: '0.65rem 1.15rem', borderRadius: '9999px', border: '1px solid rgba(0,0,0,0.08)',
+              backgroundColor: 'white', color: '#161245', fontSize: '0.875rem', fontWeight: 600,
+              cursor: 'pointer', transition: 'all 0.15s', boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
             }}
           >
-            <RefreshCw size={16} className={loading ? 'spin' : ''} />
+            <RefreshCw size={15} className={loading ? 'spin' : ''} />
             <span>Refresh</span>
           </button>
 
@@ -584,12 +704,12 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
               onClick={handleOpenAddEmployee}
               style={{
                 display: 'flex', alignItems: 'center', gap: '0.5rem',
-                padding: '0.625rem 1.25rem', borderRadius: '8px', border: 'none',
-                backgroundColor: '#0f4c81', color: 'white', fontSize: '0.875rem', fontWeight: 600,
-                cursor: 'pointer', boxShadow: '0 2px 4px rgba(15, 76, 129, 0.25)'
+                padding: '0.65rem 1.35rem', borderRadius: '9999px', border: 'none',
+                backgroundColor: '#161245', color: 'white', fontSize: '0.875rem', fontWeight: 700,
+                cursor: 'pointer', boxShadow: '0 4px 14px rgba(22,18,69,0.2)'
               }}
             >
-              <UserPlus size={18} />
+              <UserPlus size={16} />
               <span>Add Staff Member</span>
             </button>
           )}
@@ -599,12 +719,12 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
               onClick={handleOpenAddDept}
               style={{
                 display: 'flex', alignItems: 'center', gap: '0.5rem',
-                padding: '0.625rem 1.25rem', borderRadius: '8px', border: 'none',
-                backgroundColor: '#0284c7', color: 'white', fontSize: '0.875rem', fontWeight: 600,
-                cursor: 'pointer', boxShadow: '0 2px 4px rgba(2, 132, 199, 0.25)'
+                padding: '0.65rem 1.35rem', borderRadius: '9999px', border: 'none',
+                backgroundColor: '#161245', color: 'white', fontSize: '0.875rem', fontWeight: 700,
+                cursor: 'pointer', boxShadow: '0 4px 14px rgba(22,18,69,0.2)'
               }}
             >
-              <Plus size={18} />
+              <Plus size={16} />
               <span>Add Department</span>
             </button>
           )}
@@ -614,35 +734,37 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
               onClick={handleOpenAddShift}
               style={{
                 display: 'flex', alignItems: 'center', gap: '0.5rem',
-                padding: '0.625rem 1.25rem', borderRadius: '8px', border: 'none',
-                backgroundColor: '#d97706', color: 'white', fontSize: '0.875rem', fontWeight: 600,
-                cursor: 'pointer', boxShadow: '0 2px 4px rgba(217, 119, 6, 0.25)'
+                padding: '0.65rem 1.35rem', borderRadius: '9999px', border: 'none',
+                backgroundColor: '#161245', color: 'white', fontSize: '0.875rem', fontWeight: 700,
+                cursor: 'pointer', boxShadow: '0 4px 14px rgba(22,18,69,0.2)'
               }}
             >
-              <Plus size={18} />
+              <Plus size={16} />
               <span>Add Shift Schedule</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* Sub-Tabs */}
+      {/* Sub-Tabs (Neo-Bento Pill Style) */}
       <div style={{
-        display: 'flex', gap: '0.5rem', borderBottom: '1px solid #e2e8f0',
-        marginBottom: '1.5rem', paddingBottom: '0.25rem'
+        display: 'flex', gap: '0.6rem',
+        marginBottom: '1.5rem', paddingBottom: '0.25rem', flexWrap: 'wrap'
       }}>
         <button
           onClick={() => setActiveSubTab('staff')}
           style={{
             display: 'flex', alignItems: 'center', gap: '0.5rem',
-            padding: '0.75rem 1.25rem', borderRadius: '8px', border: 'none',
-            backgroundColor: activeSubTab === 'staff' ? '#e0e7ff' : 'transparent',
-            color: activeSubTab === 'staff' ? '#4338ca' : '#64748b',
+            padding: '0.6rem 1.25rem', borderRadius: '9999px',
+            border: activeSubTab === 'staff' ? 'none' : '1px solid rgba(0,0,0,0.08)',
+            backgroundColor: activeSubTab === 'staff' ? '#161245' : 'white',
+            color: activeSubTab === 'staff' ? '#ffffff' : '#64748b',
             fontWeight: activeSubTab === 'staff' ? 700 : 500,
-            cursor: 'pointer', fontSize: '0.875rem', transition: 'all 0.15s'
+            cursor: 'pointer', fontSize: '0.875rem', transition: 'all 0.15s',
+            boxShadow: activeSubTab === 'staff' ? '0 4px 12px rgba(22,18,69,0.15)' : 'none'
           }}
         >
-          <Users size={18} />
+          <Users size={16} />
           <span>Staff Directory ({employees.filter(e => e.is_active).length})</span>
         </button>
 
@@ -650,14 +772,16 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
           onClick={() => setActiveSubTab('departments')}
           style={{
             display: 'flex', alignItems: 'center', gap: '0.5rem',
-            padding: '0.75rem 1.25rem', borderRadius: '8px', border: 'none',
-            backgroundColor: activeSubTab === 'departments' ? '#e0f2fe' : 'transparent',
-            color: activeSubTab === 'departments' ? '#0369a1' : '#64748b',
+            padding: '0.6rem 1.25rem', borderRadius: '9999px',
+            border: activeSubTab === 'departments' ? 'none' : '1px solid rgba(0,0,0,0.08)',
+            backgroundColor: activeSubTab === 'departments' ? '#161245' : 'white',
+            color: activeSubTab === 'departments' ? '#ffffff' : '#64748b',
             fontWeight: activeSubTab === 'departments' ? 700 : 500,
-            cursor: 'pointer', fontSize: '0.875rem', transition: 'all 0.15s'
+            cursor: 'pointer', fontSize: '0.875rem', transition: 'all 0.15s',
+            boxShadow: activeSubTab === 'departments' ? '0 4px 12px rgba(22,18,69,0.15)' : 'none'
           }}
         >
-          <Building size={18} />
+          <Building size={16} />
           <span>Departments ({departments.length})</span>
         </button>
 
@@ -665,14 +789,16 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
           onClick={() => setActiveSubTab('shifts')}
           style={{
             display: 'flex', alignItems: 'center', gap: '0.5rem',
-            padding: '0.75rem 1.25rem', borderRadius: '8px', border: 'none',
-            backgroundColor: activeSubTab === 'shifts' ? '#fef3c7' : 'transparent',
-            color: activeSubTab === 'shifts' ? '#b45309' : '#64748b',
+            padding: '0.6rem 1.25rem', borderRadius: '9999px',
+            border: activeSubTab === 'shifts' ? 'none' : '1px solid rgba(0,0,0,0.08)',
+            backgroundColor: activeSubTab === 'shifts' ? '#161245' : 'white',
+            color: activeSubTab === 'shifts' ? '#ffffff' : '#64748b',
             fontWeight: activeSubTab === 'shifts' ? 700 : 500,
-            cursor: 'pointer', fontSize: '0.875rem', transition: 'all 0.15s'
+            cursor: 'pointer', fontSize: '0.875rem', transition: 'all 0.15s',
+            boxShadow: activeSubTab === 'shifts' ? '0 4px 12px rgba(22,18,69,0.15)' : 'none'
           }}
         >
-          <Clock size={18} />
+          <Clock size={16} />
           <span>Shifts & Timings ({shifts.length})</span>
         </button>
       </div>
@@ -705,58 +831,139 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
       {/* ======================================================== */}
       {activeSubTab === 'staff' && (
         <div>
-          {/* Quick Filters */}
+          {/* Filter Pills Bar (Matching Reference UI) */}
           <div style={{
-            backgroundColor: 'white', padding: '1rem 1.25rem', borderRadius: '12px',
-            border: '1px solid #e2e8f0', marginBottom: '1.25rem',
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            flexWrap: 'wrap', gap: '1rem'
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            flexWrap: 'wrap',
+            marginBottom: '1.5rem'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minWidth: '280px', flexWrap: 'wrap' }}>
-              <div style={{ position: 'relative', width: '280px' }}>
-                <Search size={16} color="#9ca3af" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
-                <input
-                  type="text"
-                  placeholder="Search staff, machine ID..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  style={{
-                    width: '100%', padding: '0.5rem 0.75rem 0.5rem 2.25rem',
-                    border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '0.875rem', outline: 'none'
-                  }}
-                />
+            {/* Search Pill Input */}
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <div style={{
+                position: 'absolute', left: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#64748b', pointerEvents: 'none'
+              }}>
+                <Search size={15} />
               </div>
-
-              <select
-                value={selectedDeptFilter}
-                onChange={(e) => setSelectedDeptFilter(e.target.value)}
+              <input
+                type="text"
+                placeholder="Search staff..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 style={{
-                  padding: '0.5rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '8px',
-                  fontSize: '0.875rem', color: '#374151', backgroundColor: 'white', outline: 'none'
+                  padding: '0.55rem 1rem 0.55rem 2.25rem',
+                  borderRadius: '9999px',
+                  border: '1px solid rgba(0,0,0,0.08)',
+                  backgroundColor: '#ffffff',
+                  fontSize: '0.85rem',
+                  color: '#161245',
+                  outline: 'none',
+                  width: '150px',
+                  transition: 'all 0.2s ease',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
                 }}
-              >
-                <option value="ALL">All Departments ({departments.length})</option>
-                {departments.map(d => (
-                  <option key={d.id} value={d.name}>{d.name} ({deptMembersCount[d.name] || 0})</option>
-                ))}
-              </select>
-
-              <select
-                value={selectedShiftFilter}
-                onChange={(e) => setSelectedShiftFilter(e.target.value)}
-                style={{
-                  padding: '0.5rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '8px',
-                  fontSize: '0.875rem', color: '#374151', backgroundColor: 'white', outline: 'none'
-                }}
-              >
-                <option value="ALL">All Shifts ({shifts.length})</option>
-                {shifts.map(s => (
-                  <option key={s.id} value={s.name}>{s.name} ({shiftMembersCount[s.name] || 0})</option>
-                ))}
-              </select>
+                onFocus={(e) => { e.target.style.width = '210px'; e.target.style.borderColor = '#161245'; }}
+                onBlur={(e) => { if (!e.target.value) { e.target.style.width = '150px'; e.target.style.borderColor = 'rgba(0,0,0,0.08)'; } }}
+              />
             </div>
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', color: '#4b5563', cursor: 'pointer' }}>
+            {/* Pill: All */}
+            <button
+              onClick={() => setTeamFilter('ALL')}
+              style={{
+                padding: '0.55rem 1.25rem',
+                borderRadius: '9999px',
+                border: teamFilter === 'ALL' ? 'none' : '1px solid rgba(0,0,0,0.08)',
+                backgroundColor: teamFilter === 'ALL' ? '#161245' : '#ffffff',
+                color: teamFilter === 'ALL' ? '#ffffff' : '#334155',
+                fontWeight: teamFilter === 'ALL' ? 700 : 500,
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                boxShadow: teamFilter === 'ALL' ? '0 2px 8px rgba(22,18,69,0.2)' : 'none'
+              }}
+            >
+              All
+            </button>
+
+            {/* Pill: 🔥 On Duty (count) */}
+            <button
+              onClick={() => setTeamFilter('ON_DUTY')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                padding: '0.55rem 1.15rem',
+                borderRadius: '9999px',
+                border: teamFilter === 'ON_DUTY' ? 'none' : '1px solid rgba(0,0,0,0.08)',
+                backgroundColor: teamFilter === 'ON_DUTY' ? '#161245' : '#ffffff',
+                color: teamFilter === 'ON_DUTY' ? '#ffffff' : '#334155',
+                fontWeight: teamFilter === 'ON_DUTY' ? 700 : 500,
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                boxShadow: teamFilter === 'ON_DUTY' ? '0 2px 8px rgba(22,18,69,0.2)' : 'none'
+              }}
+            >
+              <span>🔥 On Duty ({todayStats.onDutyCount})</span>
+            </button>
+
+            {/* Pill: On Leave (count) */}
+            <button
+              onClick={() => setTeamFilter('ON_LEAVE')}
+              style={{
+                padding: '0.55rem 1.15rem',
+                borderRadius: '9999px',
+                border: teamFilter === 'ON_LEAVE' ? 'none' : '1px solid rgba(0,0,0,0.08)',
+                backgroundColor: teamFilter === 'ON_LEAVE' ? '#161245' : '#ffffff',
+                color: teamFilter === 'ON_LEAVE' ? '#ffffff' : '#334155',
+                fontWeight: teamFilter === 'ON_LEAVE' ? 700 : 500,
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                boxShadow: teamFilter === 'ON_LEAVE' ? '0 2px 8px rgba(22,18,69,0.2)' : 'none'
+              }}
+            >
+              On Leave ({todayStats.onLeaveCount})
+            </button>
+
+            {/* Department Pills */}
+            {departments.map((dept) => {
+              const isSelected = teamFilter === dept.name;
+              return (
+                <button
+                  key={dept.id || dept.name}
+                  onClick={() => setTeamFilter(isSelected ? 'ALL' : dept.name)}
+                  style={{
+                    padding: '0.55rem 1.15rem',
+                    borderRadius: '9999px',
+                    border: isSelected ? 'none' : '1px solid rgba(0,0,0,0.08)',
+                    backgroundColor: isSelected ? '#161245' : '#ffffff',
+                    color: isSelected ? '#ffffff' : '#334155',
+                    fontWeight: isSelected ? 700 : 500,
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    boxShadow: isSelected ? '0 2px 8px rgba(22,18,69,0.2)' : 'none'
+                  }}
+                >
+                  {dept.name}
+                </button>
+              );
+            })}
+
+            {/* Show Former Staff Toggle */}
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              fontSize: '0.8125rem',
+              color: '#64748b',
+              cursor: 'pointer',
+              marginLeft: 'auto'
+            }}>
               <input
                 type="checkbox"
                 checked={showInactive}
@@ -767,173 +974,374 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
             </label>
           </div>
 
-          {/* Staff Table */}
-          <div style={{
-            backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0',
-            overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-          }}>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
-                <thead>
-                  <tr style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: 600 }}>
-                    <th style={{ padding: '0.875rem 1.25rem' }}>Employee Name & Role</th>
-                    <th style={{ padding: '0.875rem 1.25rem' }}>Biometric Machine ID</th>
-                    <th style={{ padding: '0.875rem 1.25rem' }}>Department</th>
-                    <th style={{ padding: '0.875rem 1.25rem' }}>Assigned Shift Timing</th>
-                    <th style={{ padding: '0.875rem 1.25rem' }}>Status</th>
-                    <th style={{ padding: '0.875rem 1.25rem', textAlign: 'right' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading ? (
-                    <tr>
-                      <td colSpan="6" style={{ padding: '3rem', textAlign: 'center', color: '#64748b' }}>
-                        <RefreshCw size={24} className="spin" style={{ margin: '0 auto 0.5rem auto' }} />
-                        Loading employee directory...
-                      </td>
-                    </tr>
-                  ) : filteredEmployees.length === 0 ? (
-                    <tr>
-                      <td colSpan="6" style={{ padding: '3rem', textAlign: 'center', color: '#64748b' }}>
-                        No staff members found matching your filters.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredEmployees.map((emp) => {
-                      const initials = (emp.displayName || 'E')
-                        .split(' ')
-                        .map(n => n[0])
-                        .join('')
-                        .substring(0, 2)
-                        .toUpperCase();
+          {/* VIEW MODE 1: BENTO CARDS (DEFAULT & USER REFERENCE) */}
+          {viewMode === 'grid' && (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))',
+              gap: '1.25rem'
+            }}>
+              {loading ? (
+                <div style={{ gridColumn: '1 / -1', padding: '4rem', textAlign: 'center', color: '#64748b' }}>
+                  <RefreshCw size={28} className="spin" style={{ margin: '0 auto 0.75rem auto' }} />
+                  <p style={{ fontWeight: 600 }}>Loading team members...</p>
+                </div>
+              ) : filteredEmployees.length === 0 ? (
+                <div style={{
+                  gridColumn: '1 / -1', padding: '4rem', textAlign: 'center', color: '#64748b',
+                  backgroundColor: '#ffffff', borderRadius: '24px', border: '1px solid #e2e8f0'
+                }}>
+                  <p style={{ fontSize: '1.15rem', fontWeight: 700, color: '#161245', marginBottom: '0.35rem' }}>No team members found</p>
+                  <p style={{ fontSize: '0.875rem', margin: 0 }}>Try clearing search or choosing another filter.</p>
+                </div>
+              ) : (
+                filteredEmployees.map((emp) => {
+                  const name = emp.displayName || emp.name || emp.employee_name || 'Staff Member';
+                  const code = emp.displayCode || emp.emp_id || emp.employee_code || '';
+                  const designation = emp.designation || 'Team Member';
+                  const deptName = emp.department_name || 'Development';
+                  const deptObj = departments.find(d => d.name === deptName);
+                  const isOnDuty = todayStats.isEmployeeOnDuty(emp);
+                  const initials = name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || '#';
 
-                      const deptObj = departments.find(d => d.name === emp.department_name);
-
-                      return (
-                        <tr 
-                          key={emp.employee_id} 
-                          style={{ borderBottom: '1px solid #f1f5f9', transition: 'background-color 0.15s' }}
+                  return (
+                    <div
+                      key={emp.employee_id || emp.id}
+                      className="notched-tab-card"
+                      onClick={() => setViewingProfileEmp(emp)}
+                      style={{
+                        cursor: 'pointer',
+                        padding: '1.4rem',
+                        borderRadius: '24px',
+                        backgroundColor: '#ffffff',
+                        border: '1px solid rgba(0, 0, 0, 0.07)',
+                        position: 'relative',
+                        boxShadow: '0 4px 20px -2px rgba(22, 18, 69, 0.04)',
+                        transition: 'all 0.2s ease',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between',
+                        minHeight: '170px'
+                      }}
+                    >
+                      {/* Top-Right Inverted Notch Tab */}
+                      <div
+                        className="notched-corner-tab"
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          right: 0,
+                          width: '46px',
+                          height: '46px',
+                          background: 'var(--bg-color, #f4f6fb)',
+                          borderBottomLeftRadius: '20px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          zIndex: 2
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setViewingProfileEmp(emp);
+                        }}
+                      >
+                        <div
+                          className="tab-inner-btn"
+                          title="View 360° Profile"
+                          style={{
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: '50%',
+                            background: '#ffffff',
+                            border: '1px solid rgba(0, 0, 0, 0.06)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: '#161245',
+                            cursor: 'pointer',
+                            boxShadow: '0 2px 5px rgba(0,0,0,0.05)',
+                            transition: 'all 0.2s'
+                          }}
                         >
-                          {/* Name & Avatar with 360 profile click */}
-                          <td style={{ padding: '0.875rem 1.25rem' }}>
-                            <div 
-                              onClick={() => setViewingProfileEmp(emp)}
-                              style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }}
-                              title="Click to view 360° Employee Profile"
-                            >
-                              <div style={{
-                                width: '38px', height: '38px', borderRadius: '50%',
-                                backgroundColor: emp.is_active ? (deptObj?.bg || '#e0e7ff') : '#f1f5f9',
-                                color: emp.is_active ? (deptObj?.color || '#4338ca') : '#94a3b8',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                fontWeight: 700, fontSize: '0.875rem'
-                              }}>
-                                {initials}
-                              </div>
-                              <div>
-                                <div style={{ fontWeight: 600, color: emp.is_active ? '#0f172a' : '#64748b', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                                  <span>{emp.displayName}</span>
-                                </div>
-                                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                                  {emp.designation || 'Team Member'} • DB #{emp.employee_id}
-                                </div>
-                              </div>
+                          <ArrowUpRight size={16} strokeWidth={2.4} />
+                        </div>
+                      </div>
+
+                      {/* Main Card Content */}
+                      <div>
+                        {/* Top: Avatar + Name + Subtitle */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', paddingRight: '2.2rem' }}>
+                          <div style={{
+                            width: '44px',
+                            height: '44px',
+                            borderRadius: '50%',
+                            backgroundColor: '#f1f5f9',
+                            color: '#475569',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontWeight: 700,
+                            fontSize: '0.95rem',
+                            flexShrink: 0
+                          }}>
+                            {initials}
+                          </div>
+                          <div style={{ overflow: 'hidden' }}>
+                            <h4 style={{
+                              margin: 0,
+                              fontSize: '1.05rem',
+                              fontWeight: 800,
+                              color: '#161245',
+                              letterSpacing: '-0.02em',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis'
+                            }}>
+                              {name}
+                            </h4>
+                            <div style={{
+                              fontSize: '0.8rem',
+                              color: '#64748b',
+                              fontWeight: 500,
+                              marginTop: '1px',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis'
+                            }}>
+                              {designation}
                             </div>
-                          </td>
+                          </div>
+                        </div>
 
-                          {/* Machine ID */}
-                          <td style={{ padding: '0.875rem 1.25rem' }}>
-                            <span style={{
-                              display: 'inline-flex', alignItems: 'center', gap: '0.375rem',
-                              backgroundColor: '#f8fafc', border: '1px solid #e2e8f0',
-                              padding: '0.25rem 0.625rem', borderRadius: '6px',
-                              fontWeight: 600, color: '#334155', fontSize: '0.75rem'
-                            }}>
-                              <Fingerprint size={13} color="#0f4c81" />
-                              Machine #{emp.displayCode}
-                            </span>
-                          </td>
+                        {/* Middle Tags: Department + Machine ID */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '1.1rem', flexWrap: 'wrap' }}>
+                          <span style={{
+                            padding: '0.25rem 0.75rem',
+                            borderRadius: '9999px',
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            backgroundColor: deptObj?.bg || '#ede9fe',
+                            color: deptObj?.color || '#4f46e5'
+                          }}>
+                            {deptName}
+                          </span>
+                          <span style={{
+                            padding: '0.25rem 0.65rem',
+                            borderRadius: '9999px',
+                            fontSize: '0.72rem',
+                            fontWeight: 600,
+                            backgroundColor: '#f8fafc',
+                            color: '#64748b',
+                            border: '1px solid #e2e8f0'
+                          }}>
+                            BIO-{code || '---'}
+                          </span>
+                        </div>
+                      </div>
 
-                          {/* Department */}
-                          <td style={{ padding: '0.875rem 1.25rem' }}>
-                            <span style={{
-                              display: 'inline-flex', alignItems: 'center', gap: '0.375rem',
-                              padding: '0.25rem 0.65rem', borderRadius: '12px',
-                              fontSize: '0.75rem', fontWeight: 600,
-                              backgroundColor: deptObj?.bg || '#f1f5f9',
-                              color: deptObj?.color || '#334155'
-                            }}>
-                              <Building size={12} />
-                              {emp.department_name}
-                            </span>
-                          </td>
+                      {/* Bottom: Live Status Dot + 4 Dots */}
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginTop: '1.25rem',
+                        paddingTop: '0.85rem',
+                        borderTop: '1px solid rgba(0, 0, 0, 0.05)'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                          <span style={{
+                            width: '8px',
+                            height: '8px',
+                            borderRadius: '50%',
+                            backgroundColor: isOnDuty ? '#90d152' : '#cbd5e1',
+                            boxShadow: isOnDuty ? '0 0 6px rgba(144, 209, 82, 0.6)' : 'none',
+                            display: 'inline-block'
+                          }} />
+                          <span style={{
+                            fontSize: '0.8125rem',
+                            fontWeight: isOnDuty ? 700 : 500,
+                            color: isOnDuty ? '#161245' : '#94a3b8'
+                          }}>
+                            {isOnDuty ? 'In Office' : 'Absent'}
+                          </span>
+                        </div>
 
-                          {/* Shift */}
-                          <td style={{ padding: '0.875rem 1.25rem' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', color: '#334155', fontSize: '0.8125rem' }}>
-                              <Clock size={14} color="#d97706" />
-                              <span style={{ fontWeight: 500 }}>{emp.shift_name}</span>
-                            </div>
-                          </td>
+                        {/* 4 dots from reference design */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: isOnDuty ? '#90d152' : '#cbd5e1' }} />
+                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: isOnDuty ? '#90d152' : '#cbd5e1' }} />
+                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: isOnDuty ? '#90d152' : '#f59e0b' }} />
+                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#f87171' }} />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
 
-                          {/* Status */}
-                          <td style={{ padding: '0.875rem 1.25rem' }}>
-                            <span style={{
-                              display: 'inline-flex', alignItems: 'center', gap: '0.375rem',
-                              padding: '0.2rem 0.5rem', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 500,
-                              backgroundColor: emp.is_active ? '#dcfce7' : '#f1f5f9',
-                              color: emp.is_active ? '#15803d' : '#64748b'
-                            }}>
-                              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: emp.is_active ? '#22c55e' : '#94a3b8' }}></span>
-                              {emp.is_active ? 'Active' : 'Inactive'}
-                            </span>
-                          </td>
+          {/* VIEW MODE 2: TABLE VIEW */}
+          {viewMode === 'table' && (
+            <div style={{
+              backgroundColor: 'white', borderRadius: '16px', border: '1px solid #e2e8f0',
+              overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+            }}>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
+                  <thead>
+                    <tr style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: 600 }}>
+                      <th style={{ padding: '0.875rem 1.25rem' }}>Employee Name & Role</th>
+                      <th style={{ padding: '0.875rem 1.25rem' }}>Biometric Machine ID</th>
+                      <th style={{ padding: '0.875rem 1.25rem' }}>Department</th>
+                      <th style={{ padding: '0.875rem 1.25rem' }}>Assigned Shift Timing</th>
+                      <th style={{ padding: '0.875rem 1.25rem' }}>Today's Status</th>
+                      <th style={{ padding: '0.875rem 1.25rem', textAlign: 'right' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loading ? (
+                      <tr>
+                        <td colSpan="6" style={{ padding: '3rem', textAlign: 'center', color: '#64748b' }}>
+                          <RefreshCw size={24} className="spin" style={{ margin: '0 auto 0.5rem auto' }} />
+                          Loading employee directory...
+                        </td>
+                      </tr>
+                    ) : filteredEmployees.length === 0 ? (
+                      <tr>
+                        <td colSpan="6" style={{ padding: '3rem', textAlign: 'center', color: '#64748b' }}>
+                          No staff members found matching your filters.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredEmployees.map((emp) => {
+                        const name = emp.displayName || emp.name || emp.employee_name || 'Staff Member';
+                        const code = emp.displayCode || emp.emp_id || emp.employee_code || '';
+                        const initials = name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || '#';
+                        const deptObj = departments.find(d => d.name === emp.department_name);
+                        const isOnDuty = todayStats.isEmployeeOnDuty(emp);
 
-                          {/* Actions */}
-                          <td style={{ padding: '0.875rem 1.25rem', textAlign: 'right' }}>
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-                              <button
+                        return (
+                          <tr 
+                            key={emp.employee_id || emp.id} 
+                            style={{ borderBottom: '1px solid #f1f5f9', transition: 'background-color 0.15s' }}
+                          >
+                            <td style={{ padding: '0.875rem 1.25rem' }}>
+                              <div 
                                 onClick={() => setViewingProfileEmp(emp)}
-                                title="View 360° Profile"
-                                style={{
-                                  padding: '0.375rem', borderRadius: '6px', border: '1px solid #e2e8f0',
-                                  backgroundColor: 'white', color: '#0f4c81', cursor: 'pointer'
-                                }}
+                                style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }}
+                                title="Click to view 360° Employee Profile"
                               >
-                                <User size={15} />
-                              </button>
-                              <button
-                                onClick={() => handleOpenEditEmployee(emp)}
-                                title="Edit Assignments"
-                                style={{
-                                  padding: '0.375rem', borderRadius: '6px', border: '1px solid #e2e8f0',
-                                  backgroundColor: 'white', color: '#475569', cursor: 'pointer'
-                                }}
-                              >
-                                <Edit3 size={15} />
-                              </button>
-                              {emp.is_active && (
+                                <div style={{
+                                  width: '38px', height: '38px', borderRadius: '50%',
+                                  backgroundColor: emp.is_active ? (deptObj?.bg || '#e0e7ff') : '#f1f5f9',
+                                  color: emp.is_active ? (deptObj?.color || '#161245') : '#94a3b8',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  fontWeight: 700, fontSize: '0.875rem'
+                                }}>
+                                  {initials}
+                                </div>
+                                <div>
+                                  <div style={{ fontWeight: 600, color: emp.is_active ? '#0f172a' : '#64748b', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                    <span>{name}</span>
+                                  </div>
+                                  <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                                    {emp.designation || 'Team Member'} • DB #{emp.employee_id}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+
+                            <td style={{ padding: '0.875rem 1.25rem' }}>
+                              <span style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '0.375rem',
+                                backgroundColor: '#f8fafc', border: '1px solid #e2e8f0',
+                                padding: '0.25rem 0.625rem', borderRadius: '8px',
+                                fontWeight: 700, color: '#161245', fontSize: '0.75rem'
+                              }}>
+                                <Fingerprint size={13} color="#161245" />
+                                Machine #{code}
+                              </span>
+                            </td>
+
+                            <td style={{ padding: '0.875rem 1.25rem' }}>
+                              <span style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '0.375rem',
+                                padding: '0.25rem 0.65rem', borderRadius: '12px',
+                                fontSize: '0.75rem', fontWeight: 600,
+                                backgroundColor: deptObj?.bg || '#f1f5f9',
+                                color: deptObj?.color || '#334155'
+                              }}>
+                                <Building size={12} />
+                                {emp.department_name}
+                              </span>
+                            </td>
+
+                            <td style={{ padding: '0.875rem 1.25rem' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', color: '#334155', fontSize: '0.8125rem' }}>
+                                <Clock size={14} color="#161245" />
+                                <span style={{ fontWeight: 500 }}>{emp.shift_name}</span>
+                              </div>
+                            </td>
+
+                            <td style={{ padding: '0.875rem 1.25rem' }}>
+                              <span style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '0.375rem',
+                                padding: '0.2rem 0.6rem', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 600,
+                                backgroundColor: isOnDuty ? '#90d152' : '#f1f5f9',
+                                color: isOnDuty ? '#161245' : '#64748b'
+                              }}>
+                                <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: isOnDuty ? '#161245' : '#94a3b8' }}></span>
+                                {isOnDuty ? 'In Office' : 'Absent'}
+                              </span>
+                            </td>
+
+                            <td style={{ padding: '0.875rem 1.25rem', textAlign: 'right' }}>
+                              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
                                 <button
-                                  onClick={() => handleOpenDeleteEmployee(emp)}
-                                  title="Deactivate / Hide Staff"
+                                  onClick={() => setViewingProfileEmp(emp)}
+                                  title="View 360° Profile"
                                   style={{
-                                    padding: '0.375rem', borderRadius: '6px', border: '1px solid #fee2e2',
-                                    backgroundColor: '#fef2f2', color: '#dc2626', cursor: 'pointer'
+                                    padding: '0.4rem', borderRadius: '8px', border: '1px solid #e2e8f0',
+                                    backgroundColor: 'white', color: '#161245', cursor: 'pointer',
+                                    transition: 'all 0.2s'
                                   }}
                                 >
-                                  <Trash2 size={15} />
+                                  <User size={15} />
                                 </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
+                                <button
+                                  onClick={() => handleOpenEditEmployee(emp)}
+                                  title="Edit Assignments"
+                                  style={{
+                                    padding: '0.375rem', borderRadius: '6px', border: '1px solid #e2e8f0',
+                                    backgroundColor: 'white', color: '#475569', cursor: 'pointer'
+                                  }}
+                                >
+                                  <Edit3 size={15} />
+                                </button>
+                                {emp.is_active && (
+                                  <button
+                                    onClick={() => handleOpenDeleteEmployee(emp)}
+                                    title="Deactivate / Hide Staff"
+                                    style={{
+                                      padding: '0.375rem', borderRadius: '6px', border: '1px solid #fee2e2',
+                                      backgroundColor: '#fef2f2', color: '#dc2626', cursor: 'pointer'
+                                    }}
+                                  >
+                                    <Trash2 size={15} />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -951,8 +1359,8 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
                 <div
                   key={dept.id}
                   style={{
-                    backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e2e8f0',
-                    padding: '1.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                    backgroundColor: 'white', borderRadius: '20px', border: '1px solid rgba(0, 0, 0, 0.06)',
+                    padding: '1.5rem', boxShadow: '0 10px 30px -5px rgba(0,0,0,0.03)',
                     display: 'flex', flexDirection: 'column', justifyContent: 'space-between'
                   }}
                 >
@@ -960,17 +1368,17 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
                         <div style={{
-                          width: '36px', height: '36px', borderRadius: '8px',
-                          backgroundColor: dept.bg || '#e0e7ff', color: dept.color || '#4f46e5',
+                          width: '40px', height: '40px', borderRadius: '12px',
+                          backgroundColor: dept.bg || '#f3f4f6', color: dept.color || '#161245',
                           display: 'flex', alignItems: 'center', justifyContent: 'center'
                         }}>
                           <Building size={20} />
                         </div>
                         <div>
-                          <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>
+                          <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#161245', letterSpacing: '-0.02em' }}>
                             {dept.name}
                           </h4>
-                          <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 500 }}>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 600 }}>
                             {membersCount} {membersCount === 1 ? 'member' : 'members'}
                           </span>
                         </div>
@@ -981,7 +1389,7 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
                           onClick={() => handleOpenEditDept(dept)}
                           title="Edit Department"
                           style={{
-                            padding: '0.35rem', borderRadius: '6px', border: '1px solid #e2e8f0',
+                            padding: '0.4rem', borderRadius: '8px', border: '1px solid #e2e8f0',
                             backgroundColor: 'white', color: '#475569', cursor: 'pointer'
                           }}
                         >
@@ -991,7 +1399,7 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
                           onClick={() => handleOpenDeleteDept(dept)}
                           title="Delete Department"
                           style={{
-                            padding: '0.35rem', borderRadius: '6px', border: '1px solid #fee2e2',
+                            padding: '0.4rem', borderRadius: '8px', border: '1px solid #fee2e2',
                             backgroundColor: '#fef2f2', color: '#dc2626', cursor: 'pointer'
                           }}
                         >
@@ -1006,7 +1414,7 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
                   </div>
 
                   <div style={{
-                    paddingTop: '0.75rem', borderTop: '1px solid #f1f5f9',
+                    paddingTop: '0.85rem', borderTop: '1px solid #f1f5f9',
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center'
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -1037,13 +1445,13 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
                         setActiveSubTab('staff');
                       }}
                       style={{
-                        background: 'none', border: 'none', color: '#0f4c81',
-                        fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer',
+                        background: 'none', border: 'none', color: '#161245',
+                        fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer',
                         display: 'flex', alignItems: 'center', gap: '0.25rem'
                       }}
                     >
                       <span>View Staff</span>
-                      <ArrowRight size={13} />
+                      <ArrowRight size={14} />
                     </button>
                   </div>
                 </div>
@@ -1067,8 +1475,8 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
                 <div
                   key={shift.id}
                   style={{
-                    backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e2e8f0',
-                    padding: '1.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                    backgroundColor: 'white', borderRadius: '20px', border: '1px solid rgba(0, 0, 0, 0.06)',
+                    padding: '1.5rem', boxShadow: '0 10px 30px -5px rgba(0,0,0,0.03)',
                     display: 'flex', flexDirection: 'column', justifyContent: 'space-between'
                   }}
                 >
@@ -1076,17 +1484,17 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
                         <div style={{
-                          width: '36px', height: '36px', borderRadius: '8px',
-                          backgroundColor: '#fef3c7', color: '#b45309',
+                          width: '40px', height: '40px', borderRadius: '12px',
+                          backgroundColor: '#161245', color: '#90d152',
                           display: 'flex', alignItems: 'center', justifyContent: 'center'
                         }}>
                           <Clock size={20} />
                         </div>
                         <div>
-                          <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>
+                          <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#161245', letterSpacing: '-0.02em' }}>
                             {shift.name}
                           </h4>
-                          <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 500 }}>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 600 }}>
                             {membersCount} {membersCount === 1 ? 'assigned' : 'assigned'}
                           </span>
                         </div>
@@ -1097,7 +1505,7 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
                           onClick={() => handleOpenEditShift(shift)}
                           title="Edit Shift"
                           style={{
-                            padding: '0.35rem', borderRadius: '6px', border: '1px solid #e2e8f0',
+                            padding: '0.4rem', borderRadius: '8px', border: '1px solid #e2e8f0',
                             backgroundColor: 'white', color: '#475569', cursor: 'pointer'
                           }}
                         >
@@ -1107,7 +1515,7 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
                           onClick={() => handleOpenDeleteShift(shift)}
                           title="Delete Shift"
                           style={{
-                            padding: '0.35rem', borderRadius: '6px', border: '1px solid #fee2e2',
+                            padding: '0.4rem', borderRadius: '8px', border: '1px solid #fee2e2',
                             backgroundColor: '#fef2f2', color: '#dc2626', cursor: 'pointer'
                           }}
                         >
@@ -1117,24 +1525,24 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
                     </div>
 
                     <div style={{
-                      backgroundColor: '#f8fafc', padding: '0.875rem', borderRadius: '8px',
-                      border: '1px solid #f1f5f9', margin: '0.75rem 0'
+                      backgroundColor: '#f9fafb', padding: '1rem', borderRadius: '14px',
+                      border: '1px solid rgba(0,0,0,0.04)', margin: '0.85rem 0'
                     }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                        <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Shift Timings:</span>
-                        <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#0f172a' }}>
+                        <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>Shift Timings:</span>
+                        <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#161245' }}>
                           {shift.displayHours}
                         </span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                        <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Duration:</span>
-                        <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#0369a1' }}>
+                        <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>Duration:</span>
+                        <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#161245' }}>
                           {shift.duration || '9h 00m'}
                         </span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Grace Period:</span>
-                        <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#16a34a' }}>
+                        <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>Grace Period:</span>
+                        <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#16a34a' }}>
                           {shift.graceMinutes} mins
                         </span>
                       </div>
@@ -1142,7 +1550,7 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
                   </div>
 
                   <div style={{
-                    paddingTop: '0.75rem', borderTop: '1px solid #f1f5f9',
+                    paddingTop: '0.85rem', borderTop: '1px solid #f1f5f9',
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center'
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -1152,7 +1560,7 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
                           title={emp.displayName}
                           style={{
                             width: '26px', height: '26px', borderRadius: '50%',
-                            backgroundColor: '#fef3c7', color: '#b45309',
+                            backgroundColor: '#161245', color: '#90d152',
                             border: '2px solid white', display: 'flex', alignItems: 'center', justifyContent: 'center',
                             fontSize: '0.7rem', fontWeight: 700, marginLeft: i > 0 ? '-6px' : 0
                           }}
@@ -1173,13 +1581,13 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
                         setActiveSubTab('staff');
                       }}
                       style={{
-                        background: 'none', border: 'none', color: '#0f4c81',
-                        fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer',
+                        background: 'none', border: 'none', color: '#161245',
+                        fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer',
                         display: 'flex', alignItems: 'center', gap: '0.25rem'
                       }}
                     >
                       <span>Filter Staff</span>
-                      <ArrowRight size={13} />
+                      <ArrowRight size={14} />
                     </button>
                   </div>
                 </div>
@@ -1365,10 +1773,11 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
                   type="submit"
                   disabled={saving}
                   style={{
-                    padding: '0.625rem 1.5rem', borderRadius: '8px', border: 'none',
-                    backgroundColor: '#0f4c81', color: 'white', fontSize: '0.875rem', fontWeight: 600,
+                    padding: '0.65rem 1.5rem', borderRadius: '9999px', border: 'none',
+                    backgroundColor: '#161245', color: 'white', fontSize: '0.875rem', fontWeight: 700,
                     cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1,
-                    display: 'flex', alignItems: 'center', gap: '0.5rem'
+                    display: 'flex', alignItems: 'center', gap: '0.5rem',
+                    boxShadow: '0 4px 12px rgba(17,24,39,0.15)'
                   }}
                 >
                   {saving && <RefreshCw size={16} className="spin" />}
@@ -1481,9 +1890,9 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
                 <button
                   type="submit"
                   style={{
-                    padding: '0.625rem 1.5rem', borderRadius: '8px', border: 'none',
-                    backgroundColor: '#0284c7', color: 'white', fontSize: '0.875rem', fontWeight: 600,
-                    cursor: 'pointer'
+                    padding: '0.65rem 1.5rem', borderRadius: '9999px', border: 'none',
+                    backgroundColor: '#161245', color: 'white', fontSize: '0.875rem', fontWeight: 700,
+                    cursor: 'pointer', boxShadow: '0 4px 12px rgba(17,24,39,0.15)'
                   }}
                 >
                   {modalMode === 'add_dept' ? 'Create Department' : 'Save Changes'}
@@ -1502,7 +1911,7 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
           display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem'
         }}>
           <div style={{
-            backgroundColor: 'white', borderRadius: '16px', maxWidth: '480px', width: '100%',
+            backgroundColor: 'white', borderRadius: '24px', maxWidth: '480px', width: '100%',
             boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)', overflow: 'hidden'
           }}>
             <div style={{
@@ -1628,9 +2037,9 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
                 <button
                   type="submit"
                   style={{
-                    padding: '0.625rem 1.5rem', borderRadius: '8px', border: 'none',
-                    backgroundColor: '#d97706', color: 'white', fontSize: '0.875rem', fontWeight: 600,
-                    cursor: 'pointer'
+                    padding: '0.65rem 1.5rem', borderRadius: '9999px', border: 'none',
+                    backgroundColor: '#161245', color: 'white', fontSize: '0.875rem', fontWeight: 700,
+                    cursor: 'pointer', boxShadow: '0 4px 12px rgba(17,24,39,0.15)'
                   }}
                 >
                   {modalMode === 'add_shift' ? 'Create Shift' : 'Save Changes'}

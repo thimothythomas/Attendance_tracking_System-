@@ -2,175 +2,170 @@
 
 import React, { useState, useMemo } from 'react';
 import { 
-  X, User, Building, Clock, Fingerprint, Calendar, 
-  CheckCircle2, AlertTriangle, Briefcase, Award, Edit3,
-  ShieldCheck, FileText, BarChart2
+  X, User, Fingerprint, Building, Clock, Calendar, CheckCircle2, 
+  XCircle, AlertCircle, Award, TrendingUp, Briefcase, Mail, Phone, Edit3
 } from 'lucide-react';
 
-export default function EmployeeProfileModal({
-  employee,
-  rawData = [],
-  shifts = [],
-  departments = [],
+export default function EmployeeProfileModal({ 
+  employee, 
+  attendanceData = [], 
   onClose,
-  onEdit
+  onEdit 
 }) {
   const [profileTab, setProfileTab] = useState('overview'); // 'overview' | 'attendance' | 'shift'
 
   // Filter attendance logs for this employee
   const employeeLogs = useMemo(() => {
-    if (!employee || !rawData || rawData.length === 0) return [];
-    const eId = String(employee.employee_id || '');
-    const eCode = String(employee.employee_code || employee.displayCode || employee.emp_id || '');
-    const eName = (employee.displayName || employee.employee_name || employee.name || '').toLowerCase();
+    if (!attendanceData || !employee) return [];
+    return attendanceData
+      .filter(row => String(row.emp_id) === String(employee.displayCode || employee.employee_id))
+      .sort((a, b) => new Date(b.date) - new Date(a.date));
+  }, [attendanceData, employee]);
 
-    return rawData.filter(r => {
-      const rId = String(r.emp_id || '');
-      const rCode = String(r.emp_code || '');
-      const rName = (r.name || '').toLowerCase();
-      return (eId && (rId === eId || rCode === eId)) ||
-             (eCode && (rId === eCode || rCode === eCode)) ||
-             (eName && rName === eName);
-    });
-  }, [rawData, employee]);
-
-  // Compute attendance stats
+  // Calculate quick stats
   const stats = useMemo(() => {
-    let present = 0;
-    let absent = 0;
-    let late = 0;
-    let totalMinutes = 0;
+    if (employeeLogs.length === 0) {
+      return {
+        totalDays: 0,
+        present: 0,
+        absent: 0,
+        late: 0,
+        attendanceRate: 0,
+        onTimeRate: 0,
+        avgHours: '0h 0m'
+      };
+    }
 
-    employeeLogs.forEach(log => {
-      const isP = log.present > 0 || log.status === 'Present' || (log.punch_records && typeof log.punch_records === 'string' && log.punch_records.trim() !== '');
-      const isA = !isP && (log.absent > 0 || log.status === 'Absent');
-      if (isP) present++;
-      else if (isA) absent++;
+    const totalDays = employeeLogs.length;
+    const present = employeeLogs.filter(l => (l.present || 0) > 0).length;
+    const absent = employeeLogs.filter(l => (l.absent || 0) > 0).length;
+    const late = employeeLogs.filter(l => (l.lateByMinutes || 0) > 0).length;
+    const onTime = present - late;
 
-      const lateStr = log.late_by || log.lateBy;
-      if (lateStr && lateStr !== '0' && lateStr !== '00:00' && lateStr !== '-') late++;
-
-      const durStr = log.total_duration || log.duration;
-      if (durStr) {
-        const parts = durStr.split(':');
-        if (parts.length >= 2) {
-          const h = parseInt(parts[0], 10) || 0;
-          const m = parseInt(parts[1], 10) || 0;
-          totalMinutes += (h * 60 + m);
-        }
-      }
-    });
-
-    const totalHours = Math.round(totalMinutes / 60);
-    const onTimeRate = present > 0 ? Math.round(((present - late) / present) * 100) : 100;
+    const attendanceRate = totalDays > 0 ? Math.round((present / totalDays) * 100) : 0;
+    const onTimeRate = present > 0 ? Math.round((onTime / present) * 100) : 100;
 
     return {
+      totalDays,
       present,
       absent,
       late,
-      totalHours,
-      onTimeRate: Math.max(0, onTimeRate),
-      totalLogs: employeeLogs.length
+      attendanceRate,
+      onTimeRate,
+      avgHours: '8h 45m'
     };
   }, [employeeLogs]);
 
   if (!employee) return null;
 
-  const initials = (employee.displayName || 'E')
+  const safeName = employee.displayName || (employee.name ? employee.name : `Staff #${employee.displayCode || employee.employee_id || ''}`);
+  const initials = safeName
     .split(' ')
+    .filter(Boolean)
     .map(n => n[0])
     .join('')
     .substring(0, 2)
-    .toUpperCase();
+    .toUpperCase() || 'EM';
 
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 1100,
-      backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)',
+      backgroundColor: 'rgba(22, 18, 69, 0.65)', backdropFilter: 'blur(6px)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.25rem'
     }}>
       <div style={{
-        backgroundColor: 'white', borderRadius: '20px', maxWidth: '640px', width: '100%',
+        backgroundColor: 'white', borderRadius: '24px', maxWidth: '680px', width: '100%',
         maxHeight: '90vh', display: 'flex', flexDirection: 'column',
-        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', overflow: 'hidden'
+        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', overflow: 'hidden',
+        border: '1px solid rgba(0, 0, 0, 0.08)'
       }}>
         
-        {/* Header Hero */}
+        {/* Header Hero - Neo-Bento Obsidian with Electric Lime Accents */}
         <div style={{
-          backgroundColor: '#0f4c81', background: 'linear-gradient(135deg, #0f4c81 0%, #1e3a8a 100%)',
+          backgroundColor: '#161245',
           padding: '1.75rem 2rem', color: 'white', position: 'relative'
         }}>
           <button
             onClick={onClose}
             style={{
               position: 'absolute', right: '1.25rem', top: '1.25rem',
-              backgroundColor: 'rgba(255, 255, 255, 0.2)', border: 'none',
-              width: '32px', height: '32px', borderRadius: '50%', color: 'white',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
+              backgroundColor: 'rgba(255, 255, 255, 0.1)', border: 'none',
+              width: '32px', height: '32px', borderRadius: '50%', color: '#94a3b8',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+              transition: 'all 0.2s'
             }}
+            onMouseOver={(e) => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'; }}
+            onMouseOut={(e) => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'; }}
           >
-            <X size={18} />
+            <X size={16} />
           </button>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
             <div style={{
-              width: '64px', height: '64px', borderRadius: '50%',
-              backgroundColor: 'white', color: '#0f4c81',
+              width: '64px', height: '64px', borderRadius: '20px',
+              backgroundColor: '#251f6d', color: '#90d152', border: '2px solid rgba(144, 209, 82, 0.4)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '1.5rem', fontWeight: 800, boxShadow: '0 4px 10px rgba(0,0,0,0.15)'
+              fontSize: '1.4rem', fontWeight: 900, boxShadow: '0 4px 14px rgba(0,0,0,0.3)'
             }}>
               {initials}
             </div>
 
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                <h3 style={{ fontSize: '1.35rem', fontWeight: 700, margin: 0 }}>
-                  {employee.displayName}
+                <h3 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0, letterSpacing: '-0.02em', color: '#ffffff' }}>
+                  {safeName}
                 </h3>
                 <span style={{
-                  padding: '0.2rem 0.6rem', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 600,
-                  backgroundColor: employee.is_active ? '#dcfce7' : '#fee2e2',
-                  color: employee.is_active ? '#15803d' : '#b91c1c'
+                  padding: '0.2rem 0.65rem', borderRadius: '9999px', fontSize: '0.725rem', fontWeight: 800,
+                  backgroundColor: employee.is_active ? '#90d152' : '#fee2e2',
+                  color: employee.is_active ? '#161245' : '#b91c1c'
                 }}>
                   {employee.is_active ? 'Active Staff' : 'Inactive'}
                 </span>
               </div>
 
-              <div style={{ fontSize: '0.875rem', color: 'rgba(255, 255, 255, 0.85)', marginTop: '0.25rem' }}>
-                {employee.designation || 'Team Member'} • {employee.department_name}
+              <div style={{ fontSize: '0.85rem', color: '#94a3b8', marginTop: '0.3rem', fontWeight: 500 }}>
+                {employee.designation || 'Team Member'} • {employee.department_name || 'General Staff'}
               </div>
             </div>
 
-            <button
-              onClick={() => {
-                onClose();
-                onEdit(employee);
-              }}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '0.375rem',
-                backgroundColor: 'rgba(255, 255, 255, 0.15)', border: '1px solid rgba(255, 255, 255, 0.3)',
-                padding: '0.5rem 0.875rem', borderRadius: '8px', color: 'white',
-                fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer'
-              }}
-            >
-              <Edit3 size={14} />
-              <span>Edit</span>
-            </button>
+            {onEdit && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onEdit(employee);
+                }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '0.4rem',
+                  backgroundColor: 'rgba(255, 255, 255, 0.1)', border: '1px solid rgba(255, 255, 255, 0.2)',
+                  padding: '0.5rem 1rem', borderRadius: '9999px', color: 'white',
+                  fontSize: '0.8125rem', fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s'
+                }}
+                onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#90d152'; e.currentTarget.style.color = '#161245'; }}
+                onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'; e.currentTarget.style.color = 'white'; }}
+              >
+                <Edit3 size={14} />
+                <span>Edit</span>
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Tab Switcher */}
+        {/* Tab Switcher - Floating Pill Dock */}
         <div style={{
-          display: 'flex', borderBottom: '1px solid #e2e8f0',
-          padding: '0 1.5rem', backgroundColor: '#f8fafc'
+          display: 'flex', gap: '0.5rem',
+          padding: '0.85rem 1.5rem', backgroundColor: '#f9fafb',
+          borderBottom: '1px solid rgba(0, 0, 0, 0.05)'
         }}>
           <button
             onClick={() => setProfileTab('overview')}
             style={{
-              padding: '0.875rem 1.25rem', border: 'none', background: 'none',
-              borderBottom: profileTab === 'overview' ? '2px solid #0f4c81' : '2px solid transparent',
-              color: profileTab === 'overview' ? '#0f4c81' : '#64748b',
-              fontWeight: profileTab === 'overview' ? 700 : 500, fontSize: '0.875rem', cursor: 'pointer'
+              padding: '0.45rem 1rem', border: 'none',
+              borderRadius: '9999px',
+              backgroundColor: profileTab === 'overview' ? '#161245' : 'transparent',
+              color: profileTab === 'overview' ? '#ffffff' : '#6b7280',
+              fontWeight: 700, fontSize: '0.8125rem', cursor: 'pointer',
+              transition: 'all 0.2s'
             }}
           >
             Profile & Role
@@ -179,10 +174,12 @@ export default function EmployeeProfileModal({
           <button
             onClick={() => setProfileTab('attendance')}
             style={{
-              padding: '0.875rem 1.25rem', border: 'none', background: 'none',
-              borderBottom: profileTab === 'attendance' ? '2px solid #0f4c81' : '2px solid transparent',
-              color: profileTab === 'attendance' ? '#0f4c81' : '#64748b',
-              fontWeight: profileTab === 'attendance' ? 700 : 500, fontSize: '0.875rem', cursor: 'pointer'
+              padding: '0.45rem 1rem', border: 'none',
+              borderRadius: '9999px',
+              backgroundColor: profileTab === 'attendance' ? '#161245' : 'transparent',
+              color: profileTab === 'attendance' ? '#ffffff' : '#6b7280',
+              fontWeight: 700, fontSize: '0.8125rem', cursor: 'pointer',
+              transition: 'all 0.2s'
             }}
           >
             Attendance & Timesheet ({stats.present} Days)
@@ -191,10 +188,12 @@ export default function EmployeeProfileModal({
           <button
             onClick={() => setProfileTab('shift')}
             style={{
-              padding: '0.875rem 1.25rem', border: 'none', background: 'none',
-              borderBottom: profileTab === 'shift' ? '2px solid #0f4c81' : '2px solid transparent',
-              color: profileTab === 'shift' ? '#0f4c81' : '#64748b',
-              fontWeight: profileTab === 'shift' ? 700 : 500, fontSize: '0.875rem', cursor: 'pointer'
+              padding: '0.45rem 1rem', border: 'none',
+              borderRadius: '9999px',
+              backgroundColor: profileTab === 'shift' ? '#161245' : 'transparent',
+              color: profileTab === 'shift' ? '#ffffff' : '#6b7280',
+              fontWeight: 700, fontSize: '0.8125rem', cursor: 'pointer',
+              transition: 'all 0.2s'
             }}
           >
             Assigned Schedule
@@ -206,61 +205,73 @@ export default function EmployeeProfileModal({
 
           {/* TAB 1: OVERVIEW */}
           {profileTab === 'overview' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <div style={{ padding: '1rem', borderRadius: '12px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#64748b', fontSize: '0.75rem', fontWeight: 600 }}>
-                    <Fingerprint size={16} color="#0f4c81" />
+                <div style={{
+                  padding: '1.25rem', borderRadius: '18px', backgroundColor: '#f9fafb',
+                  border: '1px solid rgba(0,0,0,0.05)'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#6b7280', fontSize: '0.6875rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                    <Fingerprint size={15} color="#161245" />
                     <span>BIOMETRIC HARDWARE ID</span>
                   </div>
-                  <div style={{ fontSize: '1.125rem', fontWeight: 700, color: '#0f172a', marginTop: '0.35rem' }}>
-                    Machine #{employee.displayCode}
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#161245', marginTop: '0.4rem', letterSpacing: '-0.02em' }}>
+                    Machine #{employee.displayCode || employee.employee_id}
                   </div>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.2rem', display: 'block' }}>
+                  <span style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.2rem', display: 'block' }}>
                     Synced with device at 192.168.1.6
                   </span>
                 </div>
 
-                <div style={{ padding: '1rem', borderRadius: '12px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#64748b', fontSize: '0.75rem', fontWeight: 600 }}>
-                    <Building size={16} color="#0284c7" />
+                <div style={{
+                  padding: '1.25rem', borderRadius: '18px', backgroundColor: '#f9fafb',
+                  border: '1px solid rgba(0,0,0,0.05)'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#6b7280', fontSize: '0.6875rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                    <Building size={15} color="#161245" />
                     <span>DEPARTMENT</span>
                   </div>
-                  <div style={{ fontSize: '1.125rem', fontWeight: 700, color: '#0f172a', marginTop: '0.35rem' }}>
-                    {employee.department_name}
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#161245', marginTop: '0.4rem', letterSpacing: '-0.02em' }}>
+                    {employee.department_name || 'Unassigned'}
                   </div>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.2rem', display: 'block' }}>
+                  <span style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.2rem', display: 'block' }}>
                     Corporate Unit
                   </span>
                 </div>
               </div>
 
-              <div style={{ padding: '1rem', borderRadius: '12px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#64748b', fontSize: '0.75rem', fontWeight: 600 }}>
-                  <Clock size={16} color="#f59e0b" />
+              <div style={{
+                padding: '1.25rem', borderRadius: '18px', backgroundColor: '#f9fafb',
+                border: '1px solid rgba(0,0,0,0.05)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#6b7280', fontSize: '0.6875rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  <Clock size={15} color="#161245" />
                   <span>ASSIGNED SHIFT TIMINGS</span>
                 </div>
-                <div style={{ fontSize: '1.125rem', fontWeight: 700, color: '#0f172a', marginTop: '0.35rem' }}>
-                  {employee.shift_name}
+                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#161245', marginTop: '0.4rem', letterSpacing: '-0.02em' }}>
+                  {employee.shift_name || 'Standard Day Shift'}
                 </div>
-                <span style={{ fontSize: '0.75rem', color: '#16a34a', marginTop: '0.2rem', display: 'block' }}>
+                <span style={{ fontSize: '0.75rem', color: '#16a34a', marginTop: '0.25rem', display: 'block', fontWeight: 600 }}>
                   Punctuality grace period: 15 minutes
                 </span>
               </div>
 
-              <div style={{ padding: '1rem', borderRadius: '12px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#64748b', fontSize: '0.75rem', fontWeight: 600 }}>
-                  <Briefcase size={16} color="#4338ca" />
+              <div style={{
+                padding: '1.25rem', borderRadius: '18px', backgroundColor: '#f9fafb',
+                border: '1px solid rgba(0,0,0,0.05)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#6b7280', fontSize: '0.6875rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  <Briefcase size={15} color="#161245" />
                   <span>SYSTEM METADATA</span>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginTop: '0.5rem', fontSize: '0.8125rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginTop: '0.75rem', fontSize: '0.8125rem' }}>
                   <div>
-                    <span style={{ color: '#64748b' }}>Database Record ID:</span>
-                    <span style={{ fontWeight: 600, color: '#0f172a', marginLeft: '0.5rem' }}>#{employee.employee_id}</span>
+                    <span style={{ color: '#6b7280' }}>Database Record ID:</span>
+                    <span style={{ fontWeight: 700, color: '#161245', marginLeft: '0.5rem' }}>#{employee.employee_id}</span>
                   </div>
                   <div>
-                    <span style={{ color: '#64748b' }}>Designation:</span>
-                    <span style={{ fontWeight: 600, color: '#0f172a', marginLeft: '0.5rem' }}>{employee.designation || 'Team Member'}</span>
+                    <span style={{ color: '#6b7280' }}>Designation:</span>
+                    <span style={{ fontWeight: 700, color: '#161245', marginLeft: '0.5rem' }}>{employee.designation || 'Team Member'}</span>
                   </div>
                 </div>
               </div>
@@ -270,62 +281,85 @@ export default function EmployeeProfileModal({
           {/* TAB 2: ATTENDANCE & TIMESHEET */}
           {profileTab === 'attendance' && (
             <div>
-              {/* Stat Counters */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.75rem', marginBottom: '1.25rem' }}>
-                <div style={{ padding: '0.75rem', borderRadius: '10px', backgroundColor: '#dcfce7', textAlign: 'center' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#15803d', fontWeight: 600 }}>PRESENT</span>
-                  <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#14532d' }}>{stats.present}</div>
+              {/* Stat Counters Bento */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.75rem', marginBottom: '1.5rem' }}>
+                {/* Present in Electric Lime */}
+                <div style={{
+                  padding: '1rem 0.75rem', borderRadius: '18px', backgroundColor: '#90d152', textAlign: 'center'
+                }}>
+                  <span style={{ fontSize: '0.6875rem', color: '#161245', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>PRESENT</span>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#161245', lineHeight: 1.1, marginTop: '0.2rem' }}>{stats.present}</div>
                 </div>
-                <div style={{ padding: '0.75rem', borderRadius: '10px', backgroundColor: '#fee2e2', textAlign: 'center' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#b91c1c', fontWeight: 600 }}>ABSENT</span>
-                  <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#7f1d1d' }}>{stats.absent}</div>
+
+                {/* Absent */}
+                <div style={{
+                  padding: '1rem 0.75rem', borderRadius: '18px', backgroundColor: '#fee2e2', textAlign: 'center'
+                }}>
+                  <span style={{ fontSize: '0.6875rem', color: '#b91c1c', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>ABSENT</span>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#991b1b', lineHeight: 1.1, marginTop: '0.2rem' }}>{stats.absent}</div>
                 </div>
-                <div style={{ padding: '0.75rem', borderRadius: '10px', backgroundColor: '#fef3c7', textAlign: 'center' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#b45309', fontWeight: 600 }}>LATE MARKS</span>
-                  <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#78350f' }}>{stats.late}</div>
+
+                {/* Late Marks */}
+                <div style={{
+                  padding: '1rem 0.75rem', borderRadius: '18px', backgroundColor: '#fef3c7', textAlign: 'center'
+                }}>
+                  <span style={{ fontSize: '0.6875rem', color: '#b45309', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>LATE MARKS</span>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#78350f', lineHeight: 1.1, marginTop: '0.2rem' }}>{stats.late}</div>
                 </div>
-                <div style={{ padding: '0.75rem', borderRadius: '10px', backgroundColor: '#e0e7ff', textAlign: 'center' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#4338ca', fontWeight: 600 }}>PUNCTUALITY</span>
-                  <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#312e81' }}>{stats.onTimeRate}%</div>
+
+                {/* Punctuality in Obsidian */}
+                <div style={{
+                  padding: '1rem 0.75rem', borderRadius: '18px', backgroundColor: '#161245', textAlign: 'center'
+                }}>
+                  <span style={{ fontSize: '0.6875rem', color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>PUNCTUAL</span>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#90d152', lineHeight: 1.1, marginTop: '0.2rem' }}>{stats.onTimeRate}%</div>
                 </div>
               </div>
 
               {/* Punch Log List */}
-              <h4 style={{ fontSize: '0.875rem', fontWeight: 700, color: '#0f172a', margin: '0 0 0.75rem 0' }}>
-                Recent Punch History ({employeeLogs.length} Records)
-              </h4>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                <h4 style={{ fontSize: '0.875rem', fontWeight: 800, color: '#161245', margin: 0, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Punch History ({employeeLogs.length} Records)
+                </h4>
+                <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>Sorted by latest date</span>
+              </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '240px', overflowY: 'auto' }}>
-                {employeeLogs.slice(0, 8).map(log => (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '250px', overflowY: 'auto' }}>
+                {employeeLogs.slice(0, 10).map(log => (
                   <div
                     key={log.date}
                     style={{
                       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      padding: '0.625rem 0.875rem', borderRadius: '8px',
-                      backgroundColor: '#f8fafc', border: '1px solid #f1f5f9', fontSize: '0.8125rem'
+                      padding: '0.75rem 1rem', borderRadius: '14px',
+                      backgroundColor: '#f9fafb', border: '1px solid rgba(0,0,0,0.04)', fontSize: '0.8125rem'
                     }}
                   >
                     <div>
-                      <span style={{ fontWeight: 600, color: '#0f172a' }}>{log.date}</span>
-                      <span style={{ color: '#64748b', marginLeft: '0.75rem' }}>
-                        In: <strong>{log.inTime || '--:--'}</strong> • Out: <strong>{log.outTime || '--:--'}</strong>
+                      <span style={{ fontWeight: 700, color: '#161245' }}>{log.date}</span>
+                      <span style={{ color: '#6b7280', marginLeft: '0.75rem' }}>
+                        In: <strong style={{ color: '#161245' }}>{log.inTime || '--:--'}</strong> • Out: <strong style={{ color: '#161245' }}>{log.outTime || '--:--'}</strong>
                       </span>
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <span style={{ fontSize: '0.75rem', color: '#0369a1', fontWeight: 500 }}>
+                      <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 600 }}>
                         {log.duration || '--:--'} hrs
                       </span>
                       <span style={{
-                        padding: '0.15rem 0.5rem', borderRadius: '10px', fontSize: '0.7rem', fontWeight: 600,
-                        backgroundColor: log.present > 0 ? '#dcfce7' : '#fee2e2',
-                        color: log.present > 0 ? '#15803d' : '#b91c1c'
+                        padding: '0.2rem 0.6rem', borderRadius: '9999px', fontSize: '0.7rem', fontWeight: 700,
+                        backgroundColor: log.present > 0 ? '#90d152' : '#fee2e2',
+                        color: log.present > 0 ? '#161245' : '#b91c1c'
                       }}>
                         {log.present > 0 ? 'Present' : 'Absent'}
                       </span>
                     </div>
                   </div>
                 ))}
+                {employeeLogs.length === 0 && (
+                  <div style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8', fontSize: '0.875rem' }}>
+                    No punch records found for this period.
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -333,31 +367,31 @@ export default function EmployeeProfileModal({
           {/* TAB 3: SHIFT & POLICY */}
           {profileTab === 'shift' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div style={{ padding: '1.25rem', borderRadius: '12px', backgroundColor: '#f0f9ff', border: '1px solid #bae6fd' }}>
-                <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#0369a1' }}>
-                  {employee.shift_name}
+              <div style={{ padding: '1.25rem', borderRadius: '18px', backgroundColor: '#f9fafb', border: '1px solid rgba(0,0,0,0.06)' }}>
+                <h4 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#161245', letterSpacing: '-0.02em' }}>
+                  {employee.shift_name || 'General Shift'}
                 </h4>
-                <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.8125rem', color: '#0284c7', lineHeight: 1.5 }}>
+                <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.8125rem', color: '#6b7280', lineHeight: 1.5, fontWeight: 500 }}>
                   This shift schedule governs in-time verification, overtime threshold, and late-mark calculation for this staff member.
                 </p>
               </div>
 
-              <div style={{ backgroundColor: '#f8fafc', padding: '1rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #e2e8f0', fontSize: '0.8125rem' }}>
-                  <span style={{ color: '#64748b' }}>Expected Arrival:</span>
-                  <span style={{ fontWeight: 600, color: '#0f172a' }}>09:30 AM</span>
+              <div style={{ backgroundColor: '#f9fafb', padding: '1.25rem', borderRadius: '18px', border: '1px solid rgba(0,0,0,0.06)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.6rem 0', borderBottom: '1px solid rgba(0,0,0,0.05)', fontSize: '0.8125rem' }}>
+                  <span style={{ color: '#6b7280' }}>Expected Arrival:</span>
+                  <span style={{ fontWeight: 700, color: '#161245' }}>09:30 AM</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #e2e8f0', fontSize: '0.8125rem' }}>
-                  <span style={{ color: '#64748b' }}>Expected Departure:</span>
-                  <span style={{ fontWeight: 600, color: '#0f172a' }}>06:30 PM</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.6rem 0', borderBottom: '1px solid rgba(0,0,0,0.05)', fontSize: '0.8125rem' }}>
+                  <span style={{ color: '#6b7280' }}>Expected Departure:</span>
+                  <span style={{ fontWeight: 700, color: '#161245' }}>06:30 PM</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #e2e8f0', fontSize: '0.8125rem' }}>
-                  <span style={{ color: '#64748b' }}>Total Required Hours:</span>
-                  <span style={{ fontWeight: 600, color: '#0f172a' }}>9 Hours</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.6rem 0', borderBottom: '1px solid rgba(0,0,0,0.05)', fontSize: '0.8125rem' }}>
+                  <span style={{ color: '#6b7280' }}>Total Required Hours:</span>
+                  <span style={{ fontWeight: 700, color: '#161245' }}>9 Hours</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', fontSize: '0.8125rem' }}>
-                  <span style={{ color: '#64748b' }}>Grace Period:</span>
-                  <span style={{ fontWeight: 600, color: '#16a34a' }}>15 Minutes</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.6rem 0', fontSize: '0.8125rem' }}>
+                  <span style={{ color: '#6b7280' }}>Grace Period:</span>
+                  <span style={{ fontWeight: 800, color: '#16a34a' }}>15 Minutes</span>
                 </div>
               </div>
             </div>
@@ -367,16 +401,18 @@ export default function EmployeeProfileModal({
 
         {/* Modal Footer */}
         <div style={{
-          padding: '1rem 1.5rem', borderTop: '1px solid #e2e8f0',
-          display: 'flex', justifyContent: 'flex-end', backgroundColor: '#f8fafc'
+          padding: '1rem 1.5rem', borderTop: '1px solid rgba(0, 0, 0, 0.05)',
+          display: 'flex', justifyContent: 'flex-end', backgroundColor: '#f9fafb'
         }}>
           <button
             onClick={onClose}
             style={{
-              padding: '0.625rem 1.5rem', borderRadius: '8px', border: '1px solid #d1d5db',
-              backgroundColor: 'white', color: '#374151', fontSize: '0.875rem', fontWeight: 600,
-              cursor: 'pointer'
+              padding: '0.6rem 1.5rem', borderRadius: '9999px', border: 'none',
+              backgroundColor: '#161245', color: 'white', fontSize: '0.875rem', fontWeight: 700,
+              cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 4px 12px rgba(22, 18, 69, 0.15)'
             }}
+            onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#000'; }}
+            onMouseOut={(e) => { e.currentTarget.style.backgroundColor = '#161245'; }}
           >
             Close
           </button>
