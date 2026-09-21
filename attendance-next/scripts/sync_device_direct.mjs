@@ -1,5 +1,6 @@
 import ZKLib from 'node-zklib'
 import { createClient } from '@supabase/supabase-js'
+import { getIndianHolidays } from '../src/lib/indianHolidays.js'
 
 const SUPABASE_URL    = 'https://qbbzflvmmiahxldqzckp.supabase.co'
 const SUPABASE_SECRET = 'sb_secret_p7KCX0a5SFooEJByehw2kw_v5-s9Tsg'
@@ -216,6 +217,51 @@ async function runDirectSync(daysBack = 30) {
       holiday:         false
     })
   }
+
+  // 4.5 Auto-fill Absences for missing punches
+  log('Calculating absences for days without punches...')
+  const currentYear = new Date().getFullYear()
+  const holidays = getIndianHolidays(currentYear).map(h => h.date)
+  let absencesGenerated = 0
+
+  for (let d = new Date(cutoffDate); d <= new Date(); d.setDate(d.getDate() + 1)) {
+    const dStr = toDateString(d)
+    const dayOfWeek = d.getDay()
+    
+    // Skip weekends
+    if (dayOfWeek === 0 || dayOfWeek === 6) continue
+    // Skip holidays
+    if (holidays.includes(dStr)) continue
+
+    for (const emp of codeToEmpMap.values()) {
+      const key = `${dStr}_${emp.employee_id}`
+      
+      // If no punches recorded for this day, and no existing manual entry in Supabase
+      if (!grouped.has(key) && !existingIdMap.has(key)) {
+        const recordId = ++maxId
+        recordsToUpsert.push({
+          id:              recordId,
+          attendance_date: dStr,
+          employee_id:     emp.employee_id,
+          in_time:         null,
+          out_time:        null,
+          duration:        '0',
+          late_by:         '0',
+          early_by:        '0',
+          overtime:        '0',
+          punch_records:   'No Punches',
+          present:         false,
+          absent:          true,
+          status:          'Absent',
+          weekly_off:      false,
+          holiday:         false
+        })
+        absencesGenerated++
+      }
+    }
+  }
+  
+  log(`Generated ${absencesGenerated} missing Absent records.`)
 
   // 5. Upsert to Supabase in batches of 200
   log(`Pushing ${recordsToUpsert.length} calculated records to Supabase...`)
