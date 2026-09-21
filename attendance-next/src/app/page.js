@@ -388,7 +388,7 @@ function App() {
       let finalStatus = 'Absent'
       if (status && status.includes('Absent No OutPunch')) {
         finalStatus = 'Absent'
-      } else if (record.punch_records && typeof record.punch_records === 'string' && record.punch_records.trim() !== '') {
+      } else if (record.punch_records && typeof record.punch_records === 'string' && record.punch_records.trim() !== '' && record.punch_records.trim() !== 'No Punches') {
         finalStatus = 'Present'
       }
 
