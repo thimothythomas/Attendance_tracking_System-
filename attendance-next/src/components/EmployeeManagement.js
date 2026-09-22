@@ -62,7 +62,6 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
 
   // Staff Filters
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedDeptFilter, setSelectedDeptFilter] = useState('ALL');
   const [selectedShiftFilter, setSelectedShiftFilter] = useState('ALL');
   const [showInactive, setShowInactive] = useState(false);
 
@@ -192,9 +191,9 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
   const todayStats = useMemo(() => {
     const recordsToday = (rawData || []).filter(r => r.date === latestDateStr);
     const presentList = recordsToday.filter(r => {
-      if (r.status === 'Present') return true;
+      if (r.status === 'Present' || (r.status && r.status.startsWith('Present'))) return true;
       if (typeof r.present === 'number' && r.present > 0) return true;
-      if (r.punch_records && typeof r.punch_records === 'string' && r.punch_records.trim() !== '') return true;
+      if (r.punch_records && typeof r.punch_records === 'string' && r.punch_records.trim() !== '' && r.punch_records.trim() !== 'No Punches') return true;
       return false;
     });
 
@@ -213,9 +212,13 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
       const code = String(emp.displayCode || emp.emp_id || emp.employee_code || '').trim();
       const id = String(emp.employee_id || '').trim();
       const name = (emp.displayName || emp.name || emp.employee_name || '').trim().toLowerCase();
-      return (code && (presentEmpIds.has(code) || presentEmpCodes.has(code))) ||
+      const onDuty = (code && (presentEmpIds.has(code) || presentEmpCodes.has(code))) ||
              (id && presentEmpIds.has(id)) ||
              (name && presentEmpNames.has(name));
+      if (onDuty) {
+        console.log('Employee marked on duty:', { code, id, name, presentEmpIds, presentEmpCodes, presentEmpNames });
+      }
+      return onDuty;
     };
 
     const onDutyEmployees = activeList.filter(emp => isEmpOnDuty(emp));
@@ -244,7 +247,6 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
         if (emp.department_name !== teamFilter) return false;
       }
 
-      if (selectedDeptFilter !== 'ALL' && emp.department_name !== selectedDeptFilter) return false;
       if (selectedShiftFilter !== 'ALL' && !emp.shift_name?.includes(selectedShiftFilter)) return false;
 
       if (searchQuery.trim() !== '') {
@@ -257,7 +259,7 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
       }
       return true;
     });
-  }, [employees, showInactive, teamFilter, selectedDeptFilter, selectedShiftFilter, searchQuery, todayStats]);
+  }, [employees, showInactive, teamFilter, selectedShiftFilter, searchQuery, todayStats]);
 
   // Employee CRUD
   const handleOpenAddEmployee = () => {
@@ -290,6 +292,96 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
     setErrorMsg('');
   };
 
+  const recalculateEmployeeAttendanceLogs = async (employee_id, shift_name) => {
+    try {
+      const targetShift = shifts.find(s => s.name === shift_name) || shifts[0];
+      if (!targetShift) return;
+
+      const { startTime, endTime } = targetShift;
+      const [startH, startM] = startTime.split(':').map(Number);
+      const [endH, endM] = endTime.split(':').map(Number);
+
+      let shiftAbbr = 'GS';
+      if (shift_name === 'Nightshift') shiftAbbr = 'NS';
+      else shiftAbbr = shift_name.split(' ').map(w => w[0]).join('').toUpperCase();
+
+      // Fetch all historical logs for this employee
+      const { data: logs, error } = await supabase
+        .from('attendance_logs')
+        .select('*')
+        .eq('employee_id', employee_id);
+        
+      if (error) throw error;
+      if (!logs || logs.length === 0) return;
+
+      const updates = [];
+
+      logs.forEach(log => {
+        let lateByMins = 0;
+        let earlyByMins = 0;
+
+        if (log.in_time) {
+          // Calculate Late By
+          const inDate = new Date(log.in_time);
+          if (!isNaN(inDate.getTime())) {
+            const shiftStart = new Date(inDate);
+            shiftStart.setHours(startH, startM, 0, 0);
+            if (inDate.getTime() > shiftStart.getTime()) {
+              lateByMins = Math.round((inDate.getTime() - shiftStart.getTime()) / (1000 * 60));
+            }
+          }
+
+          // Calculate Early By
+          if (log.out_time) {
+             const outDate = new Date(log.out_time);
+             if (!isNaN(outDate.getTime())) {
+               const shiftEnd = new Date(outDate);
+               shiftEnd.setHours(endH, endM, 0, 0);
+               if (outDate.getTime() < shiftEnd.getTime()) {
+                 earlyByMins = Math.round((shiftEnd.getTime() - outDate.getTime()) / (1000 * 60));
+               }
+             }
+          }
+        }
+
+        // Compute new status string
+        let newStatus = log.status || '';
+        const baseStatus = newStatus.includes('||') 
+          ? newStatus.split('||')[0] 
+          : (log.present ? 'Present' : log.absent ? 'Absent' : 'Present');
+        newStatus = `${baseStatus}||${shiftAbbr}`;
+
+        // Add to updates if changed
+        if (log.late_by !== String(lateByMins) || log.early_by !== String(earlyByMins) || log.status !== newStatus) {
+           updates.push({
+             ...log,
+             late_by: String(lateByMins),
+             early_by: String(earlyByMins),
+             status: newStatus
+           });
+        }
+      });
+
+      if (updates.length > 0) {
+        const res = await fetch('/api/recalculateLogs', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ updates })
+        });
+        
+        const result = await res.json();
+        if (!res.ok) {
+          throw new Error(result.error || 'Failed to update logs via API');
+        }
+      }
+    } catch (err) {
+      console.error('Failed to recalculate attendance logs:', err.message || err);
+      setErrorMsg(err.message || 'Failed to recalculate logs due to permission or network error.');
+    }
+  };
+
   const handleSaveEmployee = async (e) => {
     e.preventDefault();
     if (!formEmpName.trim()) { setErrorMsg('Employee name is required.'); return; }
@@ -318,7 +410,10 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
           employee_id: newId,
           employee_name: formEmpName.trim(),
           employee_code: formEmpCode.trim(),
-          department_id: formEmpDept === 'Design' ? '2' : formEmpDept === 'Marketing' ? '3' : '1'
+          department_id: formEmpDept === 'Design' ? '2' : formEmpDept === 'Marketing' ? '3' : '1',
+          department_name: formEmpDept,
+          shift_name: formEmpShift,
+          designation: formEmpDesignation.trim() || 'Team Member'
         };
 
         const { error: insErr } = await supabase.from('employees').insert([newRecord]);
@@ -328,14 +423,6 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
           }
           throw insErr;
         }
-
-        const meta = getStoredConfig('inxl_employee_meta', {});
-        meta[newId] = {
-          department_name: formEmpDept,
-          shift_name: formEmpShift,
-          designation: formEmpDesignation.trim() || 'Team Member'
-        };
-        saveStoredConfig('inxl_employee_meta', meta);
 
         setSuccessMsg(`Successfully registered ${formEmpName.trim()} (Machine ID #${formEmpCode})!`);
         setTimeout(() => setSuccessMsg(''), 4000);
@@ -353,31 +440,38 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
           finalCode = finalCode.replace(/^del_/, '').split('_')[0];
         }
 
+        const oldShift = activeItem.shift_name;
+
         const updates = {
           employee_name: finalName,
           employee_code: finalCode,
-          department_id: formEmpDept === 'Design' ? '2' : formEmpDept === 'Marketing' ? '3' : '1'
-        };
-
-        const { error: updErr } = await supabase
-          .from('employees')
-          .update(updates)
-          .eq('employee_id', activeItem.employee_id);
-
-        if (updErr) {
-          if (updErr.code === '42501') {
-            throw new Error('Database permission restricted. Please run the Supabase RLS policy query in your SQL editor.');
-          }
-          throw updErr;
-        }
-
-        const meta = getStoredConfig('inxl_employee_meta', {});
-        meta[activeItem.employee_id] = {
+          department_id: formEmpDept === 'Design' ? '2' : formEmpDept === 'Marketing' ? '3' : '1',
           department_name: formEmpDept,
           shift_name: formEmpShift,
           designation: formEmpDesignation.trim() || 'Team Member'
         };
-        saveStoredConfig('inxl_employee_meta', meta);
+
+        const res = await fetch('/api/updateEmployee', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            employee_id: activeItem.employee_id,
+            updates
+          })
+        });
+
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.error || 'Failed to update employee details.');
+        }
+
+        // Recalculate historical logs if shift changed
+        if (oldShift !== formEmpShift) {
+          await recalculateEmployeeAttendanceLogs(activeItem.employee_id, formEmpShift);
+        }
+        
+        // Dispatch event so dashboard re-fetches updated logs and employee data
+        window.dispatchEvent(new Event('inxl_data_updated'));
 
         setSuccessMsg(`Updated ${formEmpName.trim()}! Assigned to ${formEmpDept}.`);
         setTimeout(() => setSuccessMsg(''), 4000);
@@ -407,7 +501,7 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
 
       const { error: delErr } = await supabase
         .from('employees')
-        .update({ employee_name: delName, employee_code: delCode })
+        .update({ employee_name: delName, employee_code: delCode, is_active: false })
         .eq('employee_id', activeItem.employee_id);
 
       if (delErr) throw delErr;
@@ -447,7 +541,7 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
     setErrorMsg('');
   };
 
-  const handleSaveDept = (e) => {
+  const handleSaveDept = async (e) => {
     e.preventDefault();
     if (!formDeptName.trim()) { setErrorMsg('Department name is required.'); return; }
 
@@ -486,13 +580,10 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
       saveStoredConfig('inxl_departments', updated);
 
       if (oldName !== name) {
-        const meta = getStoredConfig('inxl_employee_meta', {});
-        Object.keys(meta).forEach(id => {
-          if (meta[id].department_name === oldName) {
-            meta[id].department_name = name;
-          }
-        });
-        saveStoredConfig('inxl_employee_meta', meta);
+        await supabase
+          .from('employees')
+          .update({ department_name: name })
+          .eq('department_name', oldName);
         fetchEmployees();
       }
 
@@ -545,7 +636,7 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
     setErrorMsg('');
   };
 
-  const handleSaveShift = (e) => {
+  const handleSaveShift = async (e) => {
     e.preventDefault();
     if (!formShiftName.trim()) { setErrorMsg('Shift name is required.'); return; }
 
@@ -590,14 +681,13 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
       setShifts(updated);
       saveStoredConfig('inxl_shifts', updated);
 
-      const meta = getStoredConfig('inxl_employee_meta', {});
-      Object.keys(meta).forEach(id => {
-        if (meta[id].shift_name && meta[id].shift_name.includes(oldName)) {
-          meta[id].shift_name = `${name} (${displayHours})`;
-        }
-      });
-      saveStoredConfig('inxl_employee_meta', meta);
-      fetchEmployees();
+      if (oldName !== name) {
+        await supabase
+          .from('employees')
+          .update({ shift_name: `${name} (${displayHours})` })
+          .ilike('shift_name', `%${oldName}%`);
+        fetchEmployees();
+      }
 
       setSuccessMsg(`Shift schedule "${name}" updated!`);
     }
@@ -1166,12 +1256,36 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
                           </span>
                         </div>
 
-                        {/* 4 dots from reference design */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: isOnDuty ? '#90d152' : '#cbd5e1' }} />
-                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: isOnDuty ? '#90d152' : '#cbd5e1' }} />
-                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: isOnDuty ? '#90d152' : '#f59e0b' }} />
-                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#f87171' }} />
+                        {/* Quick Actions */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenEditEmployee(emp);
+                            }}
+                            title="Edit Staff"
+                            style={{
+                              padding: '0.35rem', borderRadius: '6px', border: '1px solid #e2e8f0',
+                              backgroundColor: 'white', color: '#475569', cursor: 'pointer'
+                            }}
+                          >
+                            <Edit3 size={14} />
+                          </button>
+                          {emp.is_active && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenDeleteEmployee(emp);
+                              }}
+                              title="Deactivate Staff"
+                              style={{
+                                padding: '0.35rem', borderRadius: '6px', border: '1px solid #fee2e2',
+                                backgroundColor: '#fef2f2', color: '#dc2626', cursor: 'pointer'
+                              }}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1441,7 +1555,7 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
 
                     <button
                       onClick={() => {
-                        setSelectedDeptFilter(dept.name);
+                        setTeamFilter(dept.name);
                         setActiveSubTab('staff');
                       }}
                       style={{
@@ -1601,7 +1715,7 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
       {viewingProfileEmp && (
         <EmployeeProfileModal
           employee={viewingProfileEmp}
-          rawData={rawData}
+          attendanceData={rawData}
           shifts={shifts}
           departments={departments}
           onClose={() => setViewingProfileEmp(null)}

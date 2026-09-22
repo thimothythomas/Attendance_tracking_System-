@@ -36,8 +36,6 @@ export function saveStoredConfig(key, val) {
 }
 
 export function enrichEmployees(employeesData = []) {
-  const meta = getStoredConfig('inxl_employee_meta', {});
-
   return employeesData
     .filter(emp => {
       const isDelName = emp.employee_name && emp.employee_name.startsWith('del_');
@@ -46,7 +44,6 @@ export function enrichEmployees(employeesData = []) {
       return !isDelName && !isDelCode && !isCode11;
     })
     .map(emp => {
-      const m = meta[emp.employee_id] || meta[emp.employee_code] || {};
       const defaultDept = emp.department_id === '2' ? 'Design' : emp.department_id === '3' ? 'Marketing' : 'Development';
       const cleanName = emp.employee_name || emp.name || `Staff #${emp.employee_code || emp.employee_id || ''}`;
       const cleanCode = emp.employee_code || emp.emp_id || emp.employee_id || '';
@@ -58,10 +55,10 @@ export function enrichEmployees(employeesData = []) {
         is_active: emp.is_active !== false,
         displayName: cleanName,
         displayCode: cleanCode,
-        department_name: m.department_name || emp.department_name || defaultDept,
-        shift_id: m.shift_id || 'shift_gen',
-        shift_name: m.shift_name || emp.shift || 'General Shift (09:30 AM - 06:30 PM)',
-        designation: m.designation || emp.designation || 'Team Member'
+        department_name: emp.department_name || defaultDept,
+        shift_id: 'shift_gen',
+        shift_name: emp.shift_name || emp.shift || 'General Shift (09:30 AM - 06:30 PM)',
+        designation: emp.designation || 'Team Member'
       };
     });
 }

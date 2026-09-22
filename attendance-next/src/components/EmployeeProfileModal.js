@@ -37,9 +37,9 @@ export default function EmployeeProfileModal({
     }
 
     const totalDays = employeeLogs.length;
-    const present = employeeLogs.filter(l => (l.present || 0) > 0).length;
-    const absent = employeeLogs.filter(l => (l.absent || 0) > 0).length;
-    const late = employeeLogs.filter(l => (l.lateByMinutes || 0) > 0).length;
+    const present = employeeLogs.filter(l => l.status === 'Present').length;
+    const absent = employeeLogs.filter(l => l.status === 'Absent' || l.status === 'Leave').length;
+    const late = employeeLogs.filter(l => l.late_by && l.late_by !== '--' && l.late_by !== '0m').length;
     const onTime = present - late;
 
     const attendanceRate = totalDays > 0 ? Math.round((present / totalDays) * 100) : 0;
@@ -337,20 +337,20 @@ export default function EmployeeProfileModal({
                     <div>
                       <span style={{ fontWeight: 700, color: '#161245' }}>{log.date}</span>
                       <span style={{ color: '#6b7280', marginLeft: '0.75rem' }}>
-                        In: <strong style={{ color: '#161245' }}>{log.inTime || '--:--'}</strong> • Out: <strong style={{ color: '#161245' }}>{log.outTime || '--:--'}</strong>
+                        In: <strong style={{ color: '#161245' }}>{log.in_time || '--:--'}</strong> • Out: <strong style={{ color: '#161245' }}>{log.out_time || '--:--'}</strong>
                       </span>
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 600 }}>
-                        {log.duration || '--:--'} hrs
+                        {log.total_duration || '--:--'} hrs
                       </span>
                       <span style={{
                         padding: '0.2rem 0.6rem', borderRadius: '9999px', fontSize: '0.7rem', fontWeight: 700,
-                        backgroundColor: log.present > 0 ? '#90d152' : '#fee2e2',
-                        color: log.present > 0 ? '#161245' : '#b91c1c'
+                        backgroundColor: log.status === 'Present' ? '#90d152' : '#fee2e2',
+                        color: log.status === 'Present' ? '#161245' : '#b91c1c'
                       }}>
-                        {log.present > 0 ? 'Present' : 'Absent'}
+                        {log.status === 'Present' ? 'Present' : 'Absent'}
                       </span>
                     </div>
                   </div>

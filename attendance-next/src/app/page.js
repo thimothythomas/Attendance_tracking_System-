@@ -124,7 +124,7 @@ function App() {
             overtime: formatMinutes(log.overtime),
             punch_records: log.punch_records || '',
             status: rawStatus,
-            shift: (shiftName === 'Nightshift' ? 'NS' : shiftName) || '',
+            shift: (shiftName === 'Nightshift' ? 'NS' : shiftName?.replace(/\(?\s*P\s*-\s*0A\)?/gi, '')?.trim()) || '',
             weekly_off: log.weekly_off || false,
             holiday: log.holiday || false,
           };
@@ -397,23 +397,35 @@ function App() {
       const emp = map.get(emp_id)
       emp.totalDays += 1
 
-      // Strictly determine Present/Absent based on user rules
+      // Evaluate final status strictly but respecting leaves/holidays
       let finalStatus = 'Absent'
-      if (status && status.includes('Absent No OutPunch')) {
-        finalStatus = 'Absent'
-      } else if (record.punch_records && typeof record.punch_records === 'string' && record.punch_records.trim() !== '' && record.punch_records.trim() !== 'No Punches') {
-        finalStatus = 'Present'
+      let isLeaveType = false
+      
+      if (record.weekly_off || status.includes('WeeklyOff') || status.includes('Holiday') || record.holiday) {
+        isLeaveType = true
+        finalStatus = 'Leave'
       }
 
-      // Override status so UI strictly shows Present/Absent
-      record.status = finalStatus
-      emp.records.push(record)
+      // If they punched in, they are Present (even if on leave)
+      if (record.punch_records && typeof record.punch_records === 'string' && record.punch_records.trim() !== '' && record.punch_records.trim() !== 'No Punches') {
+        finalStatus = 'Present'
+      } else if (status && status.includes('Absent No OutPunch')) {
+        finalStatus = 'Absent'
+      }
 
+      // Track the metrics accurately
       if (finalStatus === 'Present') {
         emp.present += 1
+        record.status = isLeaveType ? 'Present (Leave)' : 'Present'
+      } else if (isLeaveType) {
+        emp.leave += 1
+        record.status = status.includes('WeeklyOff') || record.weekly_off ? 'Weekly Off' : 'Holiday'
       } else {
         emp.absent += 1
+        record.status = 'Absent'
       }
+
+      emp.records.push(record)
 
       // Parse total_duration (e.g., "9:28") to minutes and add to total
       if (record.total_duration && record.total_duration !== '--:--' && record.total_duration !== '00:00') {
@@ -1554,7 +1566,7 @@ function App() {
       {viewingProfileEmp && (
           <EmployeeProfileModal
             employee={viewingProfileEmp}
-            rawData={rawData}
+            attendanceData={rawData}
             shifts={shifts}
             departments={departments}
             onClose={() => setViewingProfileEmp(null)}

@@ -218,10 +218,34 @@ async function runDirectSync(daysBack = 30) {
       return `${toTimeOnly(p)}:${type}(Direct)`
     }).join(',')
 
-    // Late by calculation (assuming 10:00 AM standard start)
+    // Dynamically calculate Late By based on employee's shift
+    const empShiftName = item.emp.shift_name || 'General Shift'
+    let startH = 9, startM = 30 // Default to General Shift (09:30)
+    let shiftAbbr = 'GS'
+
+    if (empShiftName.toLowerCase().includes('night')) {
+      startH = 20; startM = 0; shiftAbbr = 'NS'; // Example: Nightshift at 20:00
+    } else if (empShiftName.toLowerCase().includes('us ')) {
+      startH = 18; startM = 0; shiftAbbr = 'UDS'; // Example: US Shift at 18:00
+    } else if (empShiftName.toLowerCase().includes('morn')) {
+      startH = 8; startM = 30; shiftAbbr = 'MS';
+    } else if (empShiftName.toLowerCase().includes('eve')) {
+      startH = 11; startM = 0; shiftAbbr = 'ES';
+    } else if (empShiftName.toLowerCase().includes('flex')) {
+      startH = 10; startM = 0; shiftAbbr = 'FS';
+    }
+    
     let lateByMins = 0
     const shiftStart = new Date(firstPunch)
-    shiftStart.setHours(10, 0, 0, 0)
+    shiftStart.setHours(startH, startM, 0, 0)
+    
+    // For night shifts, if punch is next morning, adjust shiftStart back 1 day
+    if (shiftAbbr === 'NS' || shiftAbbr === 'UDS') {
+      if (firstPunch.getHours() < 12) {
+        shiftStart.setDate(shiftStart.getDate() - 1)
+      }
+    }
+
     if (firstPunch.getTime() > shiftStart.getTime()) {
       lateByMins = Math.round((firstPunch.getTime() - shiftStart.getTime()) / (1000 * 60))
     }
@@ -237,13 +261,13 @@ async function runDirectSync(daysBack = 30) {
       in_time:         inTimeStr,
       out_time:        outTimeStr,
       duration:        String(diffMins),
-      late_by:         existing ? existing.late_by : String(lateByMins),
+      late_by:         existing && existing.late_by !== '0' ? existing.late_by : String(lateByMins),
       early_by:        existing ? existing.early_by : '0',
       overtime:        '0',
       punch_records:   punchTrail,
       present:         true,
       absent:          false,
-      status:          existing && existing.status ? existing.status : 'Present||GS',
+      status:          existing && existing.status ? existing.status : `Present||${shiftAbbr}`,
       weekly_off:      false,
       holiday:         false
     })
