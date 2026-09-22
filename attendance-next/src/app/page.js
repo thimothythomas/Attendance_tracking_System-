@@ -18,6 +18,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('overview')
   const [statusFilter, setStatusFilter] = useState('All')
   const [selectedMonth, setSelectedMonth] = useState('All')
+  const [selectedWeek, setSelectedWeek] = useState('All')
   const [rawData, setRawData] = useState([])
   const [allEmployees, setAllEmployees] = useState([])
   const [departments, setDepartments] = useState(INITIAL_DEPARTMENTS)
@@ -326,13 +327,25 @@ function App() {
   }, [rawData]);
 
   const filteredRawData = useMemo(() => {
-    if (selectedMonth === 'All') return rawData;
-    return rawData.filter(record => {
-      const d = parseDate(record.date);
-      const val = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}`;
-      return val === selectedMonth;
-    });
-  }, [rawData, selectedMonth]);
+    let data = rawData;
+    if (selectedMonth !== 'All') {
+      data = data.filter(record => {
+        const d = parseDate(record.date);
+        const val = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}`;
+        return val === selectedMonth;
+      });
+    }
+
+    if (selectedWeek !== 'All') {
+      data = data.filter(record => {
+         const d = parseDate(record.date);
+         const week = Math.ceil(d.getDate() / 7);
+         return `Week ${week}` === selectedWeek;
+      });
+    }
+    
+    return data;
+  }, [rawData, selectedMonth, selectedWeek]);
 
   // Group data by employee
   const employeeSummaries = useMemo(() => {
@@ -460,8 +473,9 @@ function App() {
 
   const downloadEmployeeData = () => {
     if (!selectedEmployee) return
+    const activeModalEmp = employeeSummaries.find(e => e.emp_id === selectedEmployee.emp_id) || selectedEmployee;
 
-    const dataForExcel = selectedEmployee.records
+    const dataForExcel = activeModalEmp.records
       .filter(record => statusFilter === 'All' || record.status === statusFilter)
       .map(record => ({
         'Date': record.date,
@@ -491,6 +505,7 @@ function App() {
         'Total Days': emp.totalDays,
         'Present': emp.present,
         'Absent': emp.absent,
+        'Worked Hours': `${Math.floor(emp.totalMinutesWorked / 60)}h ${emp.totalMinutesWorked % 60}m`,
         'Attendance %': `${percent}%`
       }
     })
@@ -587,6 +602,7 @@ function App() {
                 <th>Total Days</th>
                 <th>Present</th>
                 <th>Absent</th>
+                <th>Worked Hours</th>
                 <th>Attendance %</th>
               </tr>
             </thead>
@@ -636,6 +652,11 @@ function App() {
                       <td>{emp.totalDays}</td>
                       <td className="text-success font-medium">{emp.present}</td>
                       <td className="text-danger font-medium">{emp.absent}</td>
+                      <td>
+                        <span style={{ fontWeight: 800, color: '#161245' }}>
+                          {Math.floor(emp.totalMinutesWorked / 60)}h {emp.totalMinutesWorked % 60}m
+                        </span>
+                      </td>
                       <td>
                         <div className="progress-cell">
                           <div className="progress-bar-container">
@@ -862,6 +883,7 @@ function App() {
                   <th style={{ padding: '1rem 1rem', textAlign: 'center' }}>Late</th>
                   <th style={{ padding: '1rem 1rem', textAlign: 'center' }}>Early Out</th>
                   <th style={{ padding: '1rem 1rem', textAlign: 'center' }}>Overtime</th>
+                  <th style={{ padding: '1rem 1rem', textAlign: 'center' }}>Worked Hours</th>
                   <th style={{ padding: '1rem 1.5rem', textAlign: 'center' }}>Attendance %</th>
                   <th style={{ padding: '1rem 1.5rem', textAlign: 'center' }}>Grade</th>
                 </tr>
@@ -899,6 +921,9 @@ function App() {
                     </td>
                     <td style={{ padding: '1rem 1rem', textAlign: 'center', color: parseFloat(emp.otHrs) > 0 ? '#161245' : '#94a3b8', fontWeight: 700 }}>
                       {parseFloat(emp.otHrs) > 0 ? `${emp.otHrs}h` : '—'}
+                    </td>
+                    <td style={{ padding: '1rem 1rem', textAlign: 'center', color: '#161245', fontWeight: 800 }}>
+                      {Math.floor(emp.totalMinutesWorked / 60)}h {emp.totalMinutesWorked % 60}m
                     </td>
                     <td style={{ padding: '1rem 1.5rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', justifyContent: 'center' }}>
@@ -1193,9 +1218,13 @@ function App() {
           {(activeTab === 'timesheets' || activeTab === 'reports') && (
           <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
             {availableMonths.length > 0 && (
+              <>
               <select
                 value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
+                onChange={(e) => {
+                  setSelectedMonth(e.target.value);
+                  setSelectedWeek('All'); // Reset week when month changes
+                }}
                 style={{
                   padding: '0.6rem 1rem',
                   borderRadius: '9999px',
@@ -1214,6 +1243,31 @@ function App() {
                   <option key={val} value={val}>{label}</option>
                 ))}
               </select>
+              <select
+                value={selectedWeek}
+                onChange={(e) => setSelectedWeek(e.target.value)}
+                disabled={selectedMonth === 'All'}
+                style={{
+                  padding: '0.6rem 1rem',
+                  borderRadius: '9999px',
+                  border: '1px solid rgba(0,0,0,0.08)',
+                  backgroundColor: selectedMonth === 'All' ? '#f1f5f9' : 'white',
+                  outline: 'none',
+                  fontSize: '0.875rem',
+                  fontWeight: '600',
+                  color: selectedMonth === 'All' ? '#94a3b8' : 'var(--text-primary)',
+                  cursor: selectedMonth === 'All' ? 'not-allowed' : 'pointer',
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
+                }}
+              >
+                <option value="All">All Weeks</option>
+                <option value="Week 1">Week 1 (1st - 7th)</option>
+                <option value="Week 2">Week 2 (8th - 14th)</option>
+                <option value="Week 3">Week 3 (15th - 21st)</option>
+                <option value="Week 4">Week 4 (22nd - 28th)</option>
+                <option value="Week 5">Week 5 (29th+)</option>
+              </select>
+              </>
             )}
             <div className="search-box">
               <Search size={16} className="search-icon" />
@@ -1325,19 +1379,21 @@ function App() {
           ]} />
         ) : null}
 
-        {selectedEmployee && (
+        {selectedEmployee && (() => {
+          const activeModalEmp = employeeSummaries.find(e => e.emp_id === selectedEmployee.emp_id) || selectedEmployee;
+          return (
           <div className="modal-overlay" onClick={() => setSelectedEmployee(null)}>
             <div className="modal-content" style={{ borderRadius: '24px', overflow: 'hidden', border: '1px solid rgba(0,0,0,0.08)' }} onClick={e => e.stopPropagation()}>
               <div className="modal-header" style={{ backgroundColor: '#161245', color: 'white', borderBottom: '1px solid rgba(255,255,255,0.08)', padding: '1.5rem 2rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                   <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'white', margin: 0, letterSpacing: '-0.02em' }}>
-                    {selectedEmployee.name}
+                    {activeModalEmp.name}
                   </h2>
                   <span style={{
                     padding: '0.2rem 0.65rem', borderRadius: '9999px', fontSize: '0.725rem', fontWeight: 800,
                     backgroundColor: '#90d152', color: '#161245'
                   }}>
-                    ID: #{selectedEmployee.emp_id}
+                    ID: #{activeModalEmp.emp_id}
                   </span>
                 </div>
                 <button
@@ -1356,22 +1412,20 @@ function App() {
               <div className="modal-overview" style={{ padding: '1.25rem 2rem', gap: '1rem', backgroundColor: '#f9fafb', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)' }}>
                 <div style={{ padding: '1rem', borderRadius: '16px', backgroundColor: '#90d152', textAlign: 'center' }}>
                   <span style={{ fontSize: '0.6875rem', color: '#161245', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Present</span>
-                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#161245', marginTop: '0.2rem', lineHeight: 1 }}>{selectedEmployee.present}</div>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#161245', marginTop: '0.2rem', lineHeight: 1 }}>{activeModalEmp.present}</div>
                 </div>
                 <div style={{ padding: '1rem', borderRadius: '16px', backgroundColor: '#fee2e2', textAlign: 'center' }}>
                   <span style={{ fontSize: '0.6875rem', color: '#b91c1c', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Absent</span>
-                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#991b1b', marginTop: '0.2rem', lineHeight: 1 }}>{selectedEmployee.absent}</div>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#991b1b', marginTop: '0.2rem', lineHeight: 1 }}>{activeModalEmp.absent}</div>
                 </div>
                 <div style={{ padding: '1rem', borderRadius: '16px', backgroundColor: '#ffffff', border: '1px solid rgba(0,0,0,0.06)', textAlign: 'center' }}>
                   <span style={{ fontSize: '0.6875rem', color: '#6b7280', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Days</span>
-                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#161245', marginTop: '0.2rem', lineHeight: 1 }}>{selectedEmployee.totalDays}</div>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#161245', marginTop: '0.2rem', lineHeight: 1 }}>{activeModalEmp.totalDays}</div>
                 </div>
                 <div style={{ padding: '1rem', borderRadius: '16px', backgroundColor: '#161245', textAlign: 'center' }}>
-                  <span style={{ fontSize: '0.6875rem', color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Avg Hrs/Day</span>
+                  <span style={{ fontSize: '0.6875rem', color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Hours</span>
                   <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#90d152', marginTop: '0.2rem', lineHeight: 1 }}>
-                    {selectedEmployee.present > 0
-                      ? `${Math.floor((selectedEmployee.totalMinutesWorked / selectedEmployee.present) / 60)}h ${Math.round((selectedEmployee.totalMinutesWorked / selectedEmployee.present) % 60)}m`
-                      : '0h 0m'}
+                    {Math.floor(activeModalEmp.totalMinutesWorked / 60)}h {activeModalEmp.totalMinutesWorked % 60}m
                   </div>
                 </div>
               </div>
@@ -1379,6 +1433,43 @@ function App() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 2rem' }}>
                 <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#161245', margin: 0, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Detailed Punch Records</h3>
                 <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                  {availableMonths.length > 0 && (
+                    <>
+                    <select
+                      value={selectedMonth}
+                      onChange={(e) => {
+                        setSelectedMonth(e.target.value);
+                        setSelectedWeek('All');
+                      }}
+                      style={{
+                        padding: '0.55rem 1rem', borderRadius: '9999px', border: '1px solid rgba(0,0,0,0.1)',
+                        backgroundColor: 'white', outline: 'none', fontSize: '0.8125rem', fontWeight: '600', color: 'var(--text-primary)', cursor: 'pointer'
+                      }}
+                    >
+                      <option value="All">All Months</option>
+                      {availableMonths.map(([val, label]) => (
+                        <option key={val} value={val}>{label}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={selectedWeek}
+                      onChange={(e) => setSelectedWeek(e.target.value)}
+                      disabled={selectedMonth === 'All'}
+                      style={{
+                        padding: '0.55rem 1rem', borderRadius: '9999px', border: '1px solid rgba(0,0,0,0.1)',
+                        backgroundColor: selectedMonth === 'All' ? '#f1f5f9' : 'white', outline: 'none', fontSize: '0.8125rem', fontWeight: '600',
+                        color: selectedMonth === 'All' ? '#94a3b8' : 'var(--text-primary)', cursor: selectedMonth === 'All' ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      <option value="All">All Weeks</option>
+                      <option value="Week 1">Week 1 (1st - 7th)</option>
+                      <option value="Week 2">Week 2 (8th - 14th)</option>
+                      <option value="Week 3">Week 3 (15th - 21st)</option>
+                      <option value="Week 4">Week 4 (22nd - 28th)</option>
+                      <option value="Week 5">Week 5 (29th+)</option>
+                    </select>
+                    </>
+                  )}
                   <select
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
@@ -1432,7 +1523,7 @@ function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {selectedEmployee.records
+                    {activeModalEmp.records
                       .filter(record => {
                         if (statusFilter === 'All') return true;
                         if (statusFilter === 'Late') return record.late_by && record.late_by !== '00:00' && record.late_by !== '-';
@@ -1458,7 +1549,8 @@ function App() {
               </div>
             </div>
           </div>
-        )}
+          );
+        })()}
       {viewingProfileEmp && (
           <EmployeeProfileModal
             employee={viewingProfileEmp}

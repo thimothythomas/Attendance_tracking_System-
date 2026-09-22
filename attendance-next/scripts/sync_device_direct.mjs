@@ -121,48 +121,78 @@ async function runDirectSync(daysBack = 30) {
   const cutoffStr = toDateString(cutoffDate)
   log(`Processing punches from ${cutoffStr} onwards (last ${daysBack} days)...`)
 
-  // Pre-fetch existing attendance_logs so we preserve IDs
+  // Pre-fetch existing attendance_logs so we preserve IDs and status
   const { data: existingLogs } = await supabase
     .from('attendance_logs')
-    .select('id, attendance_date, employee_id')
+    .select('id, attendance_date, employee_id, status, late_by, early_by')
     .gte('attendance_date', cutoffStr)
 
   const existingIdMap = new Map()
   let maxId = 50000
   if (existingLogs) {
     existingLogs.forEach(l => {
-      existingIdMap.set(`${l.attendance_date}_${l.employee_id}`, l.id)
+      existingIdMap.set(`${l.attendance_date}_${l.employee_id}`, l)
       if (l.id && l.id > maxId) maxId = l.id
     })
   }
   log(`Found ${existingIdMap.size} existing attendance records in Supabase for this range.`)
 
-  // Map: `${date}_${employee_id}` -> punches
-  const grouped = new Map()
+  // Map: `employee_id` -> { emp, punches: [] }
+  const empPunches = new Map()
 
   rawPunches.forEach(punch => {
     if (!punch.deviceUserId || !punch.recordTime) return
     const punchDate = new Date(punch.recordTime)
     if (isNaN(punchDate.getTime())) return
 
-    const dateStr = toDateString(punchDate)
-    if (dateStr < cutoffStr) return
-
     const emp = codeToEmpMap.get(String(punch.deviceUserId).trim())
     if (!emp) return // Skip unknown or deleted users
 
-    const key = `${dateStr}_${emp.employee_id}`
-    if (!grouped.has(key)) {
-      grouped.set(key, {
-        dateStr,
-        employee_id: emp.employee_id,
-        employee_name: emp.employee_name,
-        employee_code: emp.employee_code,
+    if (!empPunches.has(emp.employee_id)) {
+      empPunches.set(emp.employee_id, {
+        emp,
         punches: []
       })
     }
-    grouped.get(key).punches.push(punchDate)
+    empPunches.get(emp.employee_id).punches.push(punchDate)
   })
+
+  // Group punches into sessions based on 10-hour gaps
+  const grouped = new Map()
+  const GAP_THRESHOLD_MS = 10 * 60 * 60 * 1000 // 10 hours
+
+  for (const { emp, punches } of empPunches.values()) {
+    // Sort punches chronologically
+    punches.sort((a, b) => a.getTime() - b.getTime())
+
+    let currentSession = null
+
+    for (const punchTime of punches) {
+      if (!currentSession || (punchTime.getTime() - currentSession.lastPunch.getTime() > GAP_THRESHOLD_MS)) {
+        // Start new session
+        const dateStr = toDateString(punchTime)
+        
+        currentSession = {
+          dateStr,
+          employee_id: emp.employee_id,
+          employee_name: emp.employee_name,
+          employee_code: emp.employee_code,
+          punches: [punchTime],
+          lastPunch: punchTime
+        }
+        
+        // Only keep sessions that start on or after cutoff
+        if (dateStr >= cutoffStr) {
+          const key = `${dateStr}_${emp.employee_id}`
+          grouped.set(key, currentSession)
+        }
+      } else {
+        // Add to current session
+        currentSession.punches.push(punchTime)
+        currentSession.lastPunch = punchTime
+      }
+    }
+  }
 
   log(`Grouped into ${grouped.size} employee-day attendance records.`)
 
@@ -197,7 +227,8 @@ async function runDirectSync(daysBack = 30) {
     }
 
     const key = `${item.dateStr}_${item.employee_id}`
-    const recordId = existingIdMap.get(key) || (++maxId)
+    const existing = existingIdMap.get(key)
+    const recordId = existing ? existing.id : (++maxId)
 
     recordsToUpsert.push({
       id:              recordId,
@@ -206,13 +237,13 @@ async function runDirectSync(daysBack = 30) {
       in_time:         inTimeStr,
       out_time:        outTimeStr,
       duration:        String(diffMins),
-      late_by:         String(lateByMins),
-      early_by:        '0',
+      late_by:         existing ? existing.late_by : String(lateByMins),
+      early_by:        existing ? existing.early_by : '0',
       overtime:        '0',
       punch_records:   punchTrail,
       present:         true,
       absent:          false,
-      status:          'Present||GS',
+      status:          existing && existing.status ? existing.status : 'Present||GS',
       weekly_off:      false,
       holiday:         false
     })
@@ -235,9 +266,10 @@ async function runDirectSync(daysBack = 30) {
 
     for (const emp of codeToEmpMap.values()) {
       const key = `${dStr}_${emp.employee_id}`
+      const existing = existingIdMap.get(key)
       
       // If no punches recorded for this day, and no existing manual entry in Supabase
-      if (!grouped.has(key) && !existingIdMap.has(key)) {
+      if (!grouped.has(key) && !existing) {
         const recordId = ++maxId
         recordsToUpsert.push({
           id:              recordId,
@@ -252,7 +284,7 @@ async function runDirectSync(daysBack = 30) {
           punch_records:   'No Punches',
           present:         false,
           absent:          true,
-          status:          'Absent',
+          status:          'Absent||GS',
           weekly_off:      false,
           holiday:         false
         })
