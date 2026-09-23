@@ -323,20 +323,31 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
         if (log.in_time) {
           // Calculate Late By
           const inDate = new Date(log.in_time);
+          let shiftStart = null;
           if (!isNaN(inDate.getTime())) {
-            const shiftStart = new Date(inDate);
+            shiftStart = new Date(inDate);
             shiftStart.setHours(startH, startM, 0, 0);
+            
+            if (shiftAbbr === 'NS' || shiftAbbr === 'UDS') {
+              if (inDate.getHours() < 12) {
+                shiftStart.setDate(shiftStart.getDate() - 1);
+              }
+            }
+
             if (inDate.getTime() > shiftStart.getTime()) {
               lateByMins = Math.round((inDate.getTime() - shiftStart.getTime()) / (1000 * 60));
             }
           }
 
           // Calculate Early By
-          if (log.out_time) {
+          if (log.out_time && shiftStart) {
              const outDate = new Date(log.out_time);
              if (!isNaN(outDate.getTime())) {
-               const shiftEnd = new Date(outDate);
+               const shiftEnd = new Date(shiftStart);
                shiftEnd.setHours(endH, endM, 0, 0);
+               if (startH > endH) {
+                 shiftEnd.setDate(shiftEnd.getDate() + 1);
+               }
                if (outDate.getTime() < shiftEnd.getTime()) {
                  earlyByMins = Math.round((shiftEnd.getTime() - outDate.getTime()) / (1000 * 60));
                }

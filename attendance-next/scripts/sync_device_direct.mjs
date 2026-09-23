@@ -221,21 +221,23 @@ async function runDirectSync(daysBack = 30) {
     // Dynamically calculate Late By based on employee's shift
     const empShiftName = item.emp.shift_name || 'General Shift'
     let startH = 9, startM = 30 // Default to General Shift (09:30)
+    let endH = 18, endM = 30
     let shiftAbbr = 'GS'
 
     if (empShiftName.toLowerCase().includes('night')) {
-      startH = 20; startM = 0; shiftAbbr = 'NS'; // Example: Nightshift at 20:00
+      startH = 20; startM = 0; endH = 5; endM = 0; shiftAbbr = 'NS'; // Example: Nightshift at 20:00
     } else if (empShiftName.toLowerCase().includes('us ')) {
-      startH = 18; startM = 0; shiftAbbr = 'UDS'; // Example: US Shift at 18:00
+      startH = 18; startM = 0; endH = 3; endM = 0; shiftAbbr = 'UDS'; // Example: US Shift at 18:00
     } else if (empShiftName.toLowerCase().includes('morn')) {
-      startH = 8; startM = 30; shiftAbbr = 'MS';
+      startH = 8; startM = 30; endH = 17; endM = 30; shiftAbbr = 'MS';
     } else if (empShiftName.toLowerCase().includes('eve')) {
-      startH = 11; startM = 0; shiftAbbr = 'ES';
+      startH = 11; startM = 0; endH = 20; endM = 0; shiftAbbr = 'ES';
     } else if (empShiftName.toLowerCase().includes('flex')) {
-      startH = 10; startM = 0; shiftAbbr = 'FS';
+      startH = 10; startM = 0; endH = 19; endM = 0; shiftAbbr = 'FS';
     }
     
     let lateByMins = 0
+    let earlyByMins = 0
     const shiftStart = new Date(firstPunch)
     shiftStart.setHours(startH, startM, 0, 0)
     
@@ -250,6 +252,18 @@ async function runDirectSync(daysBack = 30) {
       lateByMins = Math.round((firstPunch.getTime() - shiftStart.getTime()) / (1000 * 60))
     }
 
+    if (lastPunch) {
+      const shiftEnd = new Date(shiftStart)
+      shiftEnd.setHours(endH, endM, 0, 0)
+      if (startH > endH) {
+        shiftEnd.setDate(shiftEnd.getDate() + 1)
+      }
+      
+      if (lastPunch.getTime() < shiftEnd.getTime()) {
+        earlyByMins = Math.round((shiftEnd.getTime() - lastPunch.getTime()) / (1000 * 60))
+      }
+    }
+
     const key = `${item.dateStr}_${item.employee_id}`
     const existing = existingIdMap.get(key)
     const recordId = existing ? existing.id : (++maxId)
@@ -261,8 +275,8 @@ async function runDirectSync(daysBack = 30) {
       in_time:         inTimeStr,
       out_time:        outTimeStr,
       duration:        String(diffMins),
-      late_by:         existing && existing.late_by !== '0' ? existing.late_by : String(lateByMins),
-      early_by:        existing ? existing.early_by : '0',
+      late_by:         String(lateByMins),
+      early_by:        String(earlyByMins),
       overtime:        '0',
       punch_records:   punchTrail,
       present:         true,
@@ -341,10 +355,21 @@ async function runDirectSync(daysBack = 30) {
   log('==============================================')
   log('=== DIRECT SYNC COMPLETE ===')
   log('==============================================')
-  process.exit(0)
 }
 
-// Run for the last 30 days
-runDirectSync(30).catch(err => {
-  log(`FATAL: ${err.message}`)
-})
+// Run for the last 30 days initially, then loop every 2 minutes
+async function startAutoSync() {
+  log('Starting continuous biometric sync service...');
+  
+  while (true) {
+    try {
+      await runDirectSync(30);
+    } catch (err) {
+      log(`FATAL ERROR IN SYNC CYCLE: ${err.message}`);
+    }
+    log('Waiting 2 minutes before next sync cycle...');
+    await new Promise(resolve => setTimeout(resolve, 2 * 60 * 1000)); // 2 minutes
+  }
+}
+
+startAutoSync();
