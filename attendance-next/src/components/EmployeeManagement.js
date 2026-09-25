@@ -108,21 +108,37 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
     } catch {}
   };
 
-  useEffect(() => {
-    const reload = () => {
-      const storedDepts = getStoredConfig('inxl_departments', INITIAL_DEPARTMENTS);
-      const storedShifts = getStoredConfig('inxl_shifts', INITIAL_SHIFTS);
-      setDepartments(storedDepts);
-      setShifts(storedShifts);
-    };
-    reload();
+  
+  const fetchDepartments = async () => {
+    try {
+      const { data, error } = await supabase.from('departments').select('*').order('created_at', { ascending: true });
+      if (!error && data && data.length > 0) {
+        setDepartments(data);
+      } else {
+        setDepartments(getStoredConfig('inxl_departments', INITIAL_DEPARTMENTS));
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
-    const handleDataEvent = () => reload();
+  useEffect(() => {
+    const reloadShifts = () => {
+      setShifts(getStoredConfig('inxl_shifts', INITIAL_SHIFTS));
+    };
+    reloadShifts();
+    fetchDepartments();
+    
+    const handleDataEvent = () => reloadShifts();
     window.addEventListener('inxl_data_updated', handleDataEvent);
     return () => window.removeEventListener('inxl_data_updated', handleDataEvent);
   }, []);
 
+
   // Fetch Employees from Supabase
+  
+  
+
   const fetchEmployees = async () => {
     setLoading(true);
     setErrorMsg('');
@@ -555,57 +571,58 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
   const handleSaveDept = async (e) => {
     e.preventDefault();
     if (!formDeptName.trim()) { setErrorMsg('Department name is required.'); return; }
-
+    
     const name = formDeptName.trim();
+    const payload = {
+      name,
+      description: formDeptDesc.trim() || 'Team department',
+      color: formDeptColor,
+      bg: formDeptColor + '18'
+    };
+
     if (modalMode === 'add_dept') {
       if (departments.some(d => d.name.toLowerCase() === name.toLowerCase())) {
         setErrorMsg(`A department named "${name}" already exists.`);
         return;
       }
-      const newDept = {
-        id: 'dept_' + Date.now(),
-        name,
-        description: formDeptDesc.trim() || 'Team department',
-        color: formDeptColor,
-        bg: formDeptColor + '18'
-      };
-      const updated = [...departments, newDept];
-      setDepartments(updated);
-      saveStoredConfig('inxl_departments', updated);
-      setSuccessMsg(`Department "${name}" created successfully!`);
-    } else if (modalMode === 'edit_dept' && activeItem) {
-      const oldName = activeItem.name;
-      const updated = departments.map(d => {
-        if (d.id === activeItem.id) {
-          return {
-            ...d,
-            name,
-            description: formDeptDesc.trim(),
-            color: formDeptColor,
-            bg: formDeptColor + '18'
-          };
-        }
-        return d;
-      });
-      setDepartments(updated);
-      saveStoredConfig('inxl_departments', updated);
-
-      if (oldName !== name) {
-        await supabase
-          .from('employees')
-          .update({ department_name: name })
-          .eq('department_name', oldName);
-        fetchEmployees();
+      
+      try {
+        const res = await fetch('/api/updateDepartment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'CREATE', department: payload })
+        });
+        if (!res.ok) throw new Error('Failed to create in DB');
+        const { data } = await res.json();
+        
+        const newDept = data && data.length > 0 ? data[0] : { ...payload, id: 'dept_' + Date.now() };
+        setDepartments([...departments, newDept]);
+        setSuccessMsg(`Department "${name}" created successfully!`);
+      } catch (err) {
+        setErrorMsg(err.message);
       }
-
-      setSuccessMsg(`Department "${name}" updated!`);
+    } else if (modalMode === 'edit_dept' && activeItem) {
+      try {
+        payload.id = activeItem.id;
+        const res = await fetch('/api/updateDepartment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'UPDATE', department: payload })
+        });
+        if (!res.ok) throw new Error('Failed to update in DB');
+        
+        const updated = departments.map(d => (d.id === activeItem.id ? { ...d, ...payload } : d));
+        setDepartments(updated);
+        setSuccessMsg(`Department "${name}" updated.`);
+      } catch (err) {
+        setErrorMsg(err.message);
+      }
     }
-
     setTimeout(() => setSuccessMsg(''), 4000);
     setModalMode(null);
   };
 
-  const handleDeleteDept = () => {
+  const handleDeleteDept = async () => {
     if (!activeItem) return;
     const count = deptMembersCount[activeItem.name] || 0;
     if (count > 0) {
@@ -613,10 +630,21 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
       return;
     }
 
-    const updated = departments.filter(d => d.id !== activeItem.id);
-    setDepartments(updated);
-    saveStoredConfig('inxl_departments', updated);
-    setSuccessMsg(`Department "${activeItem.name}" removed.`);
+    try {
+      const res = await fetch('/api/updateDepartment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'DELETE', department: { id: activeItem.id } })
+      });
+      if (!res.ok) throw new Error('Failed to delete from DB');
+      
+      const updated = departments.filter(d => d.id !== activeItem.id);
+      setDepartments(updated);
+      setSuccessMsg(`Department "${activeItem.name}" removed.`);
+    } catch (err) {
+      setErrorMsg(err.message);
+    }
+    
     setTimeout(() => setSuccessMsg(''), 4000);
     setModalMode(null);
   };
