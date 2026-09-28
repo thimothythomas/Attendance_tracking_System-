@@ -122,14 +122,24 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
     }
   };
 
+  const fetchShifts = async () => {
+    try {
+      const { data, error } = await supabase.from('shifts').select('*').order('created_at', { ascending: true });
+      if (!error && data && data.length > 0) {
+        setShifts(data);
+      } else {
+        setShifts(getStoredConfig('inxl_shifts', INITIAL_SHIFTS));
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   useEffect(() => {
-    const reloadShifts = () => {
-      setShifts(getStoredConfig('inxl_shifts', INITIAL_SHIFTS));
-    };
-    reloadShifts();
+    fetchShifts();
     fetchDepartments();
     
-    const handleDataEvent = () => reloadShifts();
+    const handleDataEvent = () => fetchShifts();
     window.addEventListener('inxl_data_updated', handleDataEvent);
     return () => window.removeEventListener('inxl_data_updated', handleDataEvent);
   }, []);
@@ -697,10 +707,23 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
         graceMinutes: parseInt(formShiftGrace, 10) || 0,
         duration
       };
-      const updated = [...shifts, newShift];
-      setShifts(updated);
-      saveStoredConfig('inxl_shifts', updated);
-      setSuccessMsg(`Shift schedule "${name}" created!`);
+      
+      const { error } = await supabase.from('shifts').insert([{
+        name,
+        start_time: formShiftStart,
+        end_time: formShiftEnd,
+        display_timing: displayHours,
+        grace_period: parseInt(formShiftGrace, 10) || 0,
+        duration
+      }]);
+      
+      if (!error) {
+        await fetchShifts();
+        setSuccessMsg(`Shift schedule "${name}" created!`);
+        window.dispatchEvent(new Event('inxl_data_updated'));
+      } else {
+        setErrorMsg('Failed to save shift to database. Did you create the table?');
+      }
     } else if (modalMode === 'edit_shift' && activeItem) {
       const oldName = activeItem.name;
       const updated = shifts.map(s => {
@@ -735,7 +758,7 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
     setModalMode(null);
   };
 
-  const handleDeleteShift = () => {
+  const handleDeleteShift = async () => {
     if (!activeItem) return;
     const count = shiftMembersCount[activeItem.name] || 0;
     if (count > 0) {
@@ -743,12 +766,16 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
       return;
     }
 
-    const updated = shifts.filter(s => s.id !== activeItem.id);
-    setShifts(updated);
-    saveStoredConfig('inxl_shifts', updated);
-    setSuccessMsg(`Shift "${activeItem.name}" removed.`);
-    setTimeout(() => setSuccessMsg(''), 4000);
-    setModalMode(null);
+    const { error } = await supabase.from('shifts').delete().eq('id', activeItem.id);
+    if (!error) {
+      await fetchShifts();
+      window.dispatchEvent(new Event('inxl_data_updated'));
+      setSuccessMsg(`Shift "${activeItem.name}" removed.`);
+      setTimeout(() => setSuccessMsg(''), 4000);
+      setModalMode(null);
+    } else {
+      setErrorMsg('Failed to delete shift from database.');
+    }
   };
 
   return (

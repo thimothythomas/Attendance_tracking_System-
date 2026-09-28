@@ -17,8 +17,9 @@ function App() {
   const [selectedEmployee, setSelectedEmployee] = useState(null)
   const [activeTab, setActiveTab] = useState('overview')
   const [statusFilter, setStatusFilter] = useState('All')
-  const [selectedMonth, setSelectedMonth] = useState('All')
-  const [selectedWeek, setSelectedWeek] = useState('All')
+  const [selectedMonth, setSelectedMonth] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; })
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
   const [rawData, setRawData] = useState([])
   const [allEmployees, setAllEmployees] = useState([])
   const [departments, setDepartments] = useState(INITIAL_DEPARTMENTS)
@@ -34,6 +35,7 @@ function App() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [showPunchRecords, setShowPunchRecords] = useState(false)
   useEffect(() => {
     if (typeof window !== 'undefined' && localStorage.getItem('inxl_auth') === 'true') {
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -140,13 +142,20 @@ function App() {
   }
 
   useEffect(() => {
-    const reloadMeta = () => {
-      const d = getStoredConfig('inxl_departments', INITIAL_DEPARTMENTS);
-      const s = getStoredConfig('inxl_shifts', INITIAL_SHIFTS);
-      setDepartments(d);
-      setShifts(s);
+    const reloadMeta = async () => {
+      const { data: dData, error: dError } = await supabase.from('departments').select('*').order('created_at', { ascending: true });
+      if (!dError && dData && dData.length > 0) setDepartments(dData);
+      else setDepartments(getStoredConfig('inxl_departments', INITIAL_DEPARTMENTS));
+
+      const { data: sData, error: sError } = await supabase.from('shifts').select('*').order('created_at', { ascending: true });
+      if (!sError && sData && sData.length > 0) setShifts(sData);
+      else setShifts(getStoredConfig('inxl_shifts', INITIAL_SHIFTS));
     };
     reloadMeta();
+    
+    const handleDataEvent = () => reloadMeta();
+    window.addEventListener('inxl_data_updated', handleDataEvent);
+    return () => window.removeEventListener('inxl_data_updated', handleDataEvent);
 
     const handleSyncEvent = () => {
       reloadMeta();
@@ -336,16 +345,28 @@ function App() {
       });
     }
 
-    if (selectedWeek !== 'All') {
+    if (startDate) {
+      const s = new Date(startDate);
+      s.setHours(0,0,0,0);
       data = data.filter(record => {
         const d = parseDate(record.date);
-        const week = Math.ceil(d.getDate() / 7);
-        return `Week ${week}` === selectedWeek;
+        d.setHours(0,0,0,0);
+        return d >= s;
+      });
+    }
+
+    if (endDate) {
+      const e = new Date(endDate);
+      e.setHours(23,59,59,999);
+      data = data.filter(record => {
+        const d = parseDate(record.date);
+        d.setHours(0,0,0,0);
+        return d <= e;
       });
     }
 
     return data;
-  }, [rawData, selectedMonth, selectedWeek]);
+  }, [rawData, selectedMonth, startDate, endDate]);
 
   // Group data by employee
   const employeeSummaries = useMemo(() => {
@@ -502,10 +523,39 @@ function App() {
         'Punch Records': record.punch_records || 'No records'
       }))
 
-    const worksheet = XLSX.utils.json_to_sheet(dataForExcel)
+    const worksheet = XLSX.utils.json_to_sheet(dataForExcel, { origin: 'A4' })
+    
+    // Add custom header
+    XLSX.utils.sheet_add_aoa(worksheet, [
+      [`INXL Digital - Employee Attendance Records`],
+      [`Employee: ${activeModalEmp.name} (ID: ${activeModalEmp.emp_id}) | Period: ${dateRange || 'All Time'}`],
+      []
+    ], { origin: 'A1' });
+
+    // Set column widths
+    worksheet['!cols'] = [
+      { wch: 12 }, // Date
+      { wch: 15 }, // Status
+      { wch: 12 }, // Shift
+      { wch: 10 }, // In Time
+      { wch: 10 }, // Out Time
+      { wch: 10 }, // Late By
+      { wch: 10 }, // Early Go
+      { wch: 10 }, // OT
+      { wch: 12 }, // Total Dur
+      { wch: 40 }  // Punch Records
+    ];
+
+    worksheet['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 9 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 9 } }
+    ];
+
     const workbook = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Punch Records')
-    XLSX.writeFile(workbook, `${selectedEmployee.name.replace(/ /g, '_')}_Attendance.xlsx`)
+    
+    const safeDateRange = dateRange ? dateRange.replace(/[, ]+/g, '_') : 'All_Time';
+    XLSX.writeFile(workbook, `${activeModalEmp.name.replace(/ /g, '_')}_Attendance_${safeDateRange}.xlsx`)
   }
 
   const downloadData = () => {
@@ -522,10 +572,37 @@ function App() {
       }
     })
 
-    const worksheet = XLSX.utils.json_to_sheet(dataForExcel)
+    const worksheet = XLSX.utils.json_to_sheet(dataForExcel, { origin: 'A4' })
+
+    // Add custom headings
+    XLSX.utils.sheet_add_aoa(worksheet, [
+      ['INXL Digital - Workforce Attendance Report'],
+      [`Report Period: ${dateRange || 'All Time'}`],
+      []
+    ], { origin: 'A1' });
+
+    // Set column widths
+    worksheet['!cols'] = [
+      { wch: 10 }, // Emp ID
+      { wch: 25 }, // Employee Name
+      { wch: 12 }, // Total Days
+      { wch: 10 }, // Present
+      { wch: 10 }, // Absent
+      { wch: 15 }, // Worked Hours
+      { wch: 15 }  // Attendance %
+    ];
+
+    // Merge title cells
+    worksheet['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 6 } }
+    ];
+
     const workbook = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Attendance Report')
-    XLSX.writeFile(workbook, 'attendance_report.xlsx')
+    
+    const safeDateRange = dateRange ? dateRange.replace(/[, ]+/g, '_') : 'All_Time';
+    XLSX.writeFile(workbook, `INXL_Attendance_Report_${safeDateRange}.xlsx`)
   }
 
   const renderDashboard = () => (
@@ -1235,7 +1312,7 @@ function App() {
                       value={selectedMonth}
                       onChange={(e) => {
                         setSelectedMonth(e.target.value);
-                        setSelectedWeek('All'); // Reset week when month changes
+                        setStartDate(''); setEndDate(''); // Reset week when month changes
                       }}
                       style={{
                         padding: '0.6rem 1rem',
@@ -1255,30 +1332,27 @@ function App() {
                         <option key={val} value={val}>{label}</option>
                       ))}
                     </select>
-                    <select
-                      value={selectedWeek}
-                      onChange={(e) => setSelectedWeek(e.target.value)}
-                      disabled={selectedMonth === 'All'}
+                    <input
+                      type="date"
+                      value={startDate}
+                      max={endDate}
+                      onChange={(e) => setStartDate(e.target.value)}
                       style={{
-                        padding: '0.6rem 1rem',
-                        borderRadius: '9999px',
-                        border: '1px solid rgba(0,0,0,0.08)',
-                        backgroundColor: selectedMonth === 'All' ? '#f1f5f9' : 'white',
-                        outline: 'none',
-                        fontSize: '0.875rem',
-                        fontWeight: '600',
-                        color: selectedMonth === 'All' ? '#94a3b8' : 'var(--text-primary)',
-                        cursor: selectedMonth === 'All' ? 'not-allowed' : 'pointer',
-                        boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
+                        padding: '0.55rem 1rem', borderRadius: '9999px', border: '1px solid rgba(0,0,0,0.08)',
+                        outline: 'none', fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-primary)'
                       }}
-                    >
-                      <option value="All">All Weeks</option>
-                      <option value="Week 1">Week 1 (1st - 7th)</option>
-                      <option value="Week 2">Week 2 (8th - 14th)</option>
-                      <option value="Week 3">Week 3 (15th - 21st)</option>
-                      <option value="Week 4">Week 4 (22nd - 28th)</option>
-                      <option value="Week 5">Week 5 (29th+)</option>
-                    </select>
+                    />
+                    <span style={{ fontSize: '0.85rem', fontWeight: '600', color: '#64748b' }}>to</span>
+                    <input
+                      type="date"
+                      value={endDate}
+                      min={startDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      style={{
+                        padding: '0.55rem 1rem', borderRadius: '9999px', border: '1px solid rgba(0,0,0,0.08)',
+                        outline: 'none', fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-primary)'
+                      }}
+                    />
                   </>
                 )}
                 <div className="search-box">
@@ -1451,7 +1525,7 @@ function App() {
                           value={selectedMonth}
                           onChange={(e) => {
                             setSelectedMonth(e.target.value);
-                            setSelectedWeek('All');
+                            setStartDate(''); setEndDate('');
                           }}
                           style={{
                             padding: '0.55rem 1rem', borderRadius: '9999px', border: '1px solid rgba(0,0,0,0.1)',
@@ -1463,23 +1537,21 @@ function App() {
                             <option key={val} value={val}>{label}</option>
                           ))}
                         </select>
-                        <select
-                          value={selectedWeek}
-                          onChange={(e) => setSelectedWeek(e.target.value)}
-                          disabled={selectedMonth === 'All'}
-                          style={{
-                            padding: '0.55rem 1rem', borderRadius: '9999px', border: '1px solid rgba(0,0,0,0.1)',
-                            backgroundColor: selectedMonth === 'All' ? '#f1f5f9' : 'white', outline: 'none', fontSize: '0.8125rem', fontWeight: '600',
-                            color: selectedMonth === 'All' ? '#94a3b8' : 'var(--text-primary)', cursor: selectedMonth === 'All' ? 'not-allowed' : 'pointer'
-                          }}
-                        >
-                          <option value="All">All Weeks</option>
-                          <option value="Week 1">Week 1 (1st - 7th)</option>
-                          <option value="Week 2">Week 2 (8th - 14th)</option>
-                          <option value="Week 3">Week 3 (15th - 21st)</option>
-                          <option value="Week 4">Week 4 (22nd - 28th)</option>
-                          <option value="Week 5">Week 5 (29th+)</option>
-                        </select>
+                        <input
+                          type="date"
+                          value={startDate}
+                          max={endDate}
+                          onChange={(e) => setStartDate(e.target.value)}
+                          style={{ padding: '0.55rem 1rem', borderRadius: '9999px', border: '1px solid rgba(0,0,0,0.1)', outline: 'none', fontSize: '0.8125rem', fontWeight: '600', color: 'var(--text-primary)' }}
+                        />
+                        <span style={{ fontSize: '0.8125rem', fontWeight: '600', color: '#64748b' }}>to</span>
+                        <input
+                          type="date"
+                          value={endDate}
+                          min={startDate}
+                          onChange={(e) => setEndDate(e.target.value)}
+                          style={{ padding: '0.55rem 1rem', borderRadius: '9999px', border: '1px solid rgba(0,0,0,0.1)', outline: 'none', fontSize: '0.8125rem', fontWeight: '600', color: 'var(--text-primary)' }}
+                        />
                       </>
                     )}
                     <select
@@ -1515,6 +1587,10 @@ function App() {
                     >
                       <Download size={14} /> Export
                     </button>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8125rem', fontWeight: '600', cursor: 'pointer', marginLeft: '0.5rem', color: '#161245' }}>
+                      <input type='checkbox' checked={showPunchRecords} onChange={(e) => setShowPunchRecords(e.target.checked)} />
+                      Show Punch Records
+                    </label>
                   </div>
                 </div>
 
@@ -1531,7 +1607,7 @@ function App() {
                         <th>Early Go</th>
                         <th>OT</th>
                         <th>Total Dur.</th>
-                        <th>Punch Records</th>
+                        {showPunchRecords && <th>Punch Records</th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -1553,7 +1629,7 @@ function App() {
                             <td className="time-cell penalty">{record.early_going_by !== '00:00' ? record.early_going_by : '-'}</td>
                             <td className="time-cell bonus">{record.overtime !== '00:00' ? record.overtime : '-'}</td>
                             <td className="time-cell total-time">{record.total_duration || '--:--'}</td>
-                            <td className="time-cell punch-records" title={record.punch_records}>{record.punch_records || 'No records'}</td>
+                            {showPunchRecords && <td className="time-cell punch-records" title={record.punch_records}>{record.punch_records || 'No records'}</td>}
                           </tr>
                         ))}
                     </tbody>
