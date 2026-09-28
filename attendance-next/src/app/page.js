@@ -24,6 +24,7 @@ function App() {
   const [allEmployees, setAllEmployees] = useState([])
   const [departments, setDepartments] = useState(INITIAL_DEPARTMENTS)
   const [shifts, setShifts] = useState(INITIAL_SHIFTS)
+  const [customHolidays, setCustomHolidays] = useState([])
   const [selectedDeptFilter, setSelectedDeptFilter] = useState('ALL')
   const [viewingProfileEmp, setViewingProfileEmp] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -147,9 +148,21 @@ function App() {
       if (!dError && dData && dData.length > 0) setDepartments(dData);
       else setDepartments(getStoredConfig('inxl_departments', INITIAL_DEPARTMENTS));
 
+      const { data: hData, error: hError } = await supabase.from('holidays').select('*');
+      if (!hError && hData) setCustomHolidays(hData);
+
       const { data: sData, error: sError } = await supabase.from('shifts').select('*').order('created_at', { ascending: true });
-      if (!sError && sData && sData.length > 0) setShifts(sData);
-      else setShifts(getStoredConfig('inxl_shifts', INITIAL_SHIFTS));
+      if (!sError && sData && sData.length > 0) {
+        setShifts(sData.map(s => ({
+          ...s,
+          displayHours: s.display_timing,
+          graceMinutes: s.grace_period,
+          startTime: s.start_time,
+          endTime: s.end_time
+        })));
+      } else {
+        setShifts(getStoredConfig('inxl_shifts', INITIAL_SHIFTS));
+      }
     };
     reloadMeta();
     
@@ -1461,7 +1474,8 @@ function App() {
           <CalendarView events={[
             ...getIndianHolidays(new Date().getFullYear() - 1),
             ...getIndianHolidays(new Date().getFullYear()),
-            ...getIndianHolidays(new Date().getFullYear() + 1)
+            ...getIndianHolidays(new Date().getFullYear() + 1),
+            ...customHolidays
           ]} />
         ) : null}
 

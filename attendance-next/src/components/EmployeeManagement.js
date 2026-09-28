@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { 
   Users, UserPlus, Search, Edit3, Trash2, CheckCircle2, 
-  AlertCircle, Clock, Building, X, RefreshCw,
+  AlertCircle, Clock, Building, X, RefreshCw, Calendar,
   Fingerprint, Plus, ArrowRight, ArrowUpRight, LayoutGrid, List, User
 } from 'lucide-react';
 import EmployeeProfileModal from './EmployeeProfileModal';
@@ -46,6 +46,9 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
   const [employees, setEmployees] = useState([]);
   const [departments, setDepartments] = useState(INITIAL_DEPARTMENTS);
   const [shifts, setShifts] = useState(INITIAL_SHIFTS);
+  const [customHolidays, setCustomHolidays] = useState([]);
+  const [formHolidayName, setFormHolidayName] = useState('');
+  const [formHolidayDate, setFormHolidayDate] = useState('');
   const [loading, setLoading] = useState(true);
 
   // Profile Modal State
@@ -122,11 +125,24 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
     }
   };
 
+    const fetchHolidays = async () => {
+    try {
+      const { data, error } = await supabase.from('holidays').select('*').order('date', { ascending: true });
+      if (!error && data) setCustomHolidays(data);
+    } catch (err) { console.error(err); }
+  };
+
   const fetchShifts = async () => {
     try {
       const { data, error } = await supabase.from('shifts').select('*').order('created_at', { ascending: true });
       if (!error && data && data.length > 0) {
-        setShifts(data);
+        setShifts(data.map(s => ({
+          ...s,
+          displayHours: s.display_timing,
+          graceMinutes: s.grace_period,
+          startTime: s.start_time,
+          endTime: s.end_time
+        })));
       } else {
         setShifts(getStoredConfig('inxl_shifts', INITIAL_SHIFTS));
       }
@@ -138,8 +154,9 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
   useEffect(() => {
     fetchShifts();
     fetchDepartments();
+    fetchHolidays();
     
-    const handleDataEvent = () => fetchShifts();
+    const handleDataEvent = () => { fetchShifts(); fetchHolidays(); };
     window.addEventListener('inxl_data_updated', handleDataEvent);
     return () => window.removeEventListener('inxl_data_updated', handleDataEvent);
   }, []);
@@ -660,6 +677,56 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
   };
 
   // Shift CRUD
+    const handleOpenAddHoliday = () => {
+    setFormHolidayName('');
+    setFormHolidayDate('');
+    setModalMode('add_holiday');
+  };
+
+  const handleOpenEditHoliday = (holiday) => {
+    setActiveItem(holiday);
+    setFormHolidayName(holiday.name);
+    setFormHolidayDate(holiday.date);
+    setModalMode('edit_holiday');
+  };
+
+  const handleSaveHoliday = async (e) => {
+    e.preventDefault();
+    if (!formHolidayName.trim() || !formHolidayDate.trim()) { setErrorMsg('Name and Date are required.'); return; }
+    
+    if (modalMode === 'add_holiday') {
+      const { error } = await supabase.from('holidays').insert([{ name: formHolidayName.trim(), date: formHolidayDate }]);
+      if (!error) {
+        await fetchHolidays();
+        window.dispatchEvent(new Event('inxl_data_updated'));
+        setSuccessMsg(`Holiday created!`);
+        setTimeout(() => setSuccessMsg(''), 4000);
+        setModalMode(null);
+      } else { setErrorMsg('Failed to save holiday.'); }
+    } else {
+      const { error } = await supabase.from('holidays').update({ name: formHolidayName.trim(), date: formHolidayDate }).eq('id', activeItem.id);
+      if (!error) {
+        await fetchHolidays();
+        window.dispatchEvent(new Event('inxl_data_updated'));
+        setSuccessMsg(`Holiday updated!`);
+        setTimeout(() => setSuccessMsg(''), 4000);
+        setModalMode(null);
+      } else { setErrorMsg('Failed to update holiday.'); }
+    }
+  };
+
+  const handleDeleteHoliday = async () => {
+    if (!activeItem) return;
+    const { error } = await supabase.from('holidays').delete().eq('id', activeItem.id);
+    if (!error) {
+      await fetchHolidays();
+      window.dispatchEvent(new Event('inxl_data_updated'));
+      setSuccessMsg(`Holiday removed.`);
+      setTimeout(() => setSuccessMsg(''), 4000);
+      setModalMode(null);
+    }
+  };
+
   const handleOpenAddShift = () => {
     setFormShiftName('');
     setFormShiftStart('09:30');
@@ -785,7 +852,7 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
             <h2 style={{ fontSize: '1.65rem', fontWeight: 800, color: '#161245', margin: 0, letterSpacing: '-0.02em' }}>
-              {activeSubTab === 'staff' ? 'Team Members' : activeSubTab === 'departments' ? 'Department Organization' : 'Shift Schedules & Policies'}
+              {activeSubTab === 'staff' ? 'Team Members' : activeSubTab === 'departments' ? 'Department Organization' : activeSubTab === 'shifts' ? 'Shift Schedules & Policies' : 'Company Holidays'}
             </h2>
             {activeSubTab === 'staff' && (
               <span style={{
@@ -800,7 +867,7 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
           <p style={{ color: '#64748b', fontSize: '0.875rem', marginTop: '0.25rem', marginBottom: 0 }}>
             {activeSubTab === 'staff' 
               ? 'Directory of active personnel, live duty status, and employee profiles.'
-              : 'Manage staff profiles, department structures, and shift timings.'}
+              : activeSubTab === 'holidays' ? 'Manage public and company-specific holidays.' : 'Manage staff profiles, department structures, and shift timings.'}
           </p>
         </div>
 
@@ -885,6 +952,20 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
             </button>
           )}
 
+          {activeSubTab === 'holidays' && (
+            <button
+              onClick={handleOpenAddHoliday}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.5rem',
+                padding: '0.65rem 1.35rem', borderRadius: '9999px', border: 'none',
+                backgroundColor: '#161245', color: 'white', fontSize: '0.875rem', fontWeight: 700,
+                cursor: 'pointer', boxShadow: '0 4px 14px rgba(22,18,69,0.2)'
+              }}
+            >
+              <Plus size={16} />
+              <span>Add Holiday</span>
+            </button>
+          )}
           {activeSubTab === 'shifts' && (
             <button
               onClick={handleOpenAddShift}
@@ -956,6 +1037,22 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
         >
           <Clock size={16} />
           <span>Shifts & Timings ({shifts.length})</span>
+        </button>
+        <button
+          onClick={() => setActiveSubTab('holidays')}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '0.5rem',
+            padding: '0.6rem 1.25rem', borderRadius: '9999px',
+            border: activeSubTab === 'holidays' ? 'none' : '1px solid rgba(0,0,0,0.08)',
+            backgroundColor: activeSubTab === 'holidays' ? '#161245' : 'white',
+            color: activeSubTab === 'holidays' ? '#ffffff' : '#64748b',
+            fontWeight: activeSubTab === 'holidays' ? 700 : 500,
+            cursor: 'pointer', fontSize: '0.875rem', transition: 'all 0.15s',
+            boxShadow: activeSubTab === 'holidays' ? '0 4px 12px rgba(22,18,69,0.15)' : 'none'
+          }}
+        >
+          <Calendar size={16} />
+          <span>Holidays ({customHolidays.length})</span>
         </button>
       </div>
 
