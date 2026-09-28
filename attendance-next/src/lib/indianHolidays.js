@@ -30,11 +30,5 @@ export const getIndianHolidays = (year = new Date().getFullYear()) => {
     .map(holiday => ({
       ...holiday,
       date: `${year}${holiday.date.substring(4)}`
-    }))
-    // Filter out holidays that fall on a Saturday (6) or Sunday (0)
-    .filter(holiday => {
-      const dateObj = new Date(holiday.date);
-      const dayOfWeek = dateObj.getDay();
-      return dayOfWeek !== 0 && dayOfWeek !== 6;
-    });
+    }));
 };
