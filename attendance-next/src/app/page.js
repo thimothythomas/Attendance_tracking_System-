@@ -435,9 +435,27 @@ function App() {
       let finalStatus = 'Absent'
       let isLeaveType = false
 
-      if (record.weekly_off || status.includes('WeeklyOff') || status.includes('Holiday') || record.holiday) {
+      const formatLocal = (d) => {
+        if (!d) return '';
+        const dt = new Date(d);
+        return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+      };
+      
+      const recordDateStr = formatLocal(parseDate(record.date));
+      const isCustomHoliday = customHolidays.some(h => {
+        try { return formatLocal(h.date) === recordDateStr; } catch(e) { return false; }
+      });
+      let isIndianHoliday = false;
+      try {
+        isIndianHoliday = getIndianHolidays(parseDate(record.date).getFullYear()).some(h => formatLocal(h.date) === recordDateStr);
+      } catch(e) {}
+      
+      const isHoliday = record.holiday || status.includes('Holiday') || isCustomHoliday || isIndianHoliday;
+
+      if (record.weekly_off || status.includes('WeeklyOff') || isHoliday) {
         isLeaveType = true
         finalStatus = 'Leave'
+        record.status = status.includes('WeeklyOff') || record.weekly_off ? 'Weekly Off' : 'Holiday'
       }
 
       // If they punched in, they are Present (even if on leave)

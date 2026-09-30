@@ -347,10 +347,10 @@ export default function EmployeeProfileModal({
                       </span>
                       <span style={{
                         padding: '0.2rem 0.6rem', borderRadius: '9999px', fontSize: '0.7rem', fontWeight: 700,
-                        backgroundColor: log.status === 'Present' ? '#90d152' : '#fee2e2',
-                        color: log.status === 'Present' ? '#161245' : '#b91c1c'
+                        backgroundColor: log.status === 'Present' ? '#90d152' : (log.status === 'Holiday' ? '#e0f2fe' : '#fee2e2'),
+                        color: log.status === 'Present' ? '#161245' : (log.status === 'Holiday' ? '#0284c7' : '#b91c1c')
                       }}>
-                        {log.status === 'Present' ? 'Present' : 'Absent'}
+                        {log.status === 'Present' ? 'Present' : (log.status === 'Holiday' ? 'Holiday' : (log.status === 'Weekly Off' ? 'Weekly Off' : 'Absent'))}
                       </span>
                     </div>
                   </div>
