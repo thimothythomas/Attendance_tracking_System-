@@ -378,8 +378,57 @@ function App() {
       });
     }
 
-    return data;
-  }, [rawData, selectedMonth, startDate, endDate]);
+    if (data.length === 0) return data;
+
+    let minDate = new Date(8640000000000000);
+    let maxDate = new Date(-8640000000000000);
+    data.forEach(r => {
+      const d = parseDate(r.date);
+      if (d < minDate) minDate = d;
+      if (d > maxDate) maxDate = d;
+    });
+
+    const formatLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+    const existingMap = new Set();
+    data.forEach(r => {
+      existingMap.add(`${r.emp_id}_${formatLocal(parseDate(r.date))}`);
+    });
+
+    const newData = [...data];
+    allEmployees.forEach(emp => {
+      const empId = emp.employee_code || emp.employee_id;
+      for (let d = new Date(minDate); d <= maxDate; d.setDate(d.getDate() + 1)) {
+        const dayOfWeek = d.getDay();
+        if (dayOfWeek === 0 || dayOfWeek === 6) continue;
+
+        const dateStr = formatLocal(d);
+        if (!existingMap.has(`${empId}_${dateStr}`)) {
+          newData.push({
+            date: dateStr,
+            emp_id: empId,
+            name: emp.displayName || emp.employee_name,
+            status: 'Absent',
+            in_time: '--:--',
+            out_time: '--:--',
+            total_duration: '00:00',
+            late_by: '-',
+            early_going_by: '-',
+            overtime: '-',
+            punch_records: 'No Punches',
+            shift: emp.shift_name || '-',
+            weekly_off: false,
+            holiday: false
+          });
+        }
+      }
+    });
+
+    // sort newData by date
+    newData.sort((a, b) => parseDate(b.date) - parseDate(a.date));
+
+    return newData;
+  }, [rawData, selectedMonth, startDate, endDate, allEmployees]);
 
   // Group data by employee
   const employeeSummaries = useMemo(() => {
@@ -429,8 +478,6 @@ function App() {
       }
 
       const emp = map.get(emp_id)
-      emp.totalDays += 1
-
       // Evaluate final status strictly but respecting leaves/holidays
       let finalStatus = 'Absent'
       let isLeaveType = false
@@ -451,7 +498,6 @@ function App() {
       } catch(e) {}
       
       const isHoliday = record.holiday || status.includes('Holiday') || isCustomHoliday || isIndianHoliday;
-
       if (record.weekly_off || status.includes('WeeklyOff') || isHoliday) {
         isLeaveType = true
         finalStatus = 'Leave'
@@ -501,14 +547,9 @@ function App() {
       }
       return String(a.emp_id).localeCompare(String(b.emp_id));
     });
-
-    // Make sure totalDays matches the max working days so empty employees don't say 0 days while others say 12
-    const maxWorkingDays = result.reduce((max, emp) => Math.max(max, emp.totalDays), 0)
+    // Total days is the sum of Present and Absent days (working days only, holidays/leaves are excluded unless worked)
     result.forEach(emp => {
-      if (emp.totalDays === 0 && maxWorkingDays > 0) {
-        emp.totalDays = maxWorkingDays
-        emp.absent = maxWorkingDays
-      }
+      emp.totalDays = emp.present + emp.absent;
     })
 
     return result;
