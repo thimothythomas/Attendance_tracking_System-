@@ -134,7 +134,7 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
 
       if (error) throw error;
 
-      const enriched = enrichEmployees(data || []);
+      const enriched = enrichEmployees(data || [], true);
       setEmployees(enriched);
       if (onEmployeesUpdated) onEmployeesUpdated(enriched);
     } catch (err) {
@@ -510,12 +510,25 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
         ? activeItem.employee_code
         : 'del_' + activeItem.employee_code + '_' + activeItem.employee_id;
 
-      const { error: delErr } = await supabase
-        .from('employees')
-        .update({ employee_name: delName, employee_code: delCode, is_active: false })
-        .eq('employee_id', activeItem.employee_id);
+      const updates = { employee_name: delName, employee_code: delCode };
 
-      if (delErr) throw delErr;
+      const res = await fetch('/api/updateEmployee', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employee_id: activeItem.employee_id,
+          updates
+        })
+      });
+
+      if (!res.ok) {
+        const { error: delErr } = await supabase
+          .from('employees')
+          .update(updates)
+          .eq('employee_id', activeItem.employee_id);
+
+        if (delErr) throw delErr;
+      }
 
       setSuccessMsg(`Employee ${activeItem.displayName} has been deactivated.`);
       setTimeout(() => setSuccessMsg(''), 4000);

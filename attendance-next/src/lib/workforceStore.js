@@ -35,30 +35,38 @@ export function saveStoredConfig(key, val) {
   } catch {}
 }
 
-export function enrichEmployees(employeesData = []) {
+export function enrichEmployees(employeesData = [], includeInactive = false) {
   return employeesData
     .filter(emp => {
-      const isDelName = emp.employee_name && emp.employee_name.startsWith('del_');
-      const isDelCode = emp.employee_code && String(emp.employee_code).startsWith('del_');
-      const isCode11 = String(emp.employee_code) === '11' || String(emp.employee_id) === '11';
-      return !isDelName && !isDelCode && !isCode11;
+      const isDelName = emp.employee_name && emp.employee_name.startsWith("del_");
+      const isDelCode = emp.employee_code && String(emp.employee_code).startsWith("del_");
+      const isCode11 = String(emp.employee_code) === "11" || String(emp.employee_id) === "11";
+      if (isCode11) return false;
+      if (!includeInactive && (isDelName || isDelCode)) return false;
+      return true;
     })
     .map(emp => {
-      const defaultDept = emp.department_id === '2' ? 'Design' : emp.department_id === '3' ? 'Marketing' : 'Development';
-      const cleanName = emp.employee_name || emp.name || `Staff #${emp.employee_code || emp.employee_id || ''}`;
-      const cleanCode = emp.employee_code || emp.emp_id || emp.employee_id || '';
+      const isDelName = emp.employee_name && emp.employee_name.startsWith("del_");
+      const isDelCode = emp.employee_code && String(emp.employee_code).startsWith("del_");
+      const is_active = !isDelName && !isDelCode && emp.is_active !== false;
+
+      const defaultDept = emp.department_id === "2" ? "Design" : emp.department_id === "3" ? "Marketing" : "Development";
+      const rawName = emp.employee_name || emp.name || `Staff #${emp.employee_code || emp.employee_id || ""}`;
+      const rawCode = emp.employee_code || emp.emp_id || emp.employee_id || "";
+      const cleanName = rawName.replace(/^del_/, "");
+      const cleanCode = rawCode.replace(/^del_/, "").split("_")[0];
 
       return {
         ...emp,
         name: cleanName,
         emp_id: cleanCode,
-        is_active: emp.is_active !== false,
+        is_active,
         displayName: cleanName,
         displayCode: cleanCode,
         department_name: emp.department_name || defaultDept,
-        shift_id: 'shift_gen',
-        shift_name: emp.shift_name || emp.shift || 'General Shift (09:30 AM - 06:30 PM)',
-        designation: emp.designation || 'Team Member'
+        shift_id: "shift_gen",
+        shift_name: emp.shift_name || emp.shift || "General Shift (09:30 AM - 06:30 PM)",
+        designation: emp.designation || "Team Member"
       };
     });
 }
