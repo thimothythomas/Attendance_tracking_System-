@@ -2,12 +2,12 @@ import ZKLib from 'node-zklib'
 import { createClient } from '@supabase/supabase-js'
 import { getIndianHolidays } from '../src/lib/indianHolidays.js'
 
-const SUPABASE_URL    = 'https://qbbzflvmmiahxldqzckp.supabase.co'
-const SUPABASE_SECRET = 'sb_secret_p7KCX0a5SFooEJByehw2kw_v5-s9Tsg'
+const SUPABASE_URL    = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://qbbzflvmmiahxldqzckp.supabase.co'
+const SUPABASE_KEY    = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_c-m2osEWNoPbzSzewmYoyg_rlwVizBA'
 const DEVICE_IP       = '192.168.1.6'
 const DEVICE_PORT     = 4370
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_SECRET, {
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: false }
 })
 
@@ -166,24 +166,32 @@ async function runDirectSync(daysBack = 30) {
     punches.sort((a, b) => a.getTime() - b.getTime())
 
     let currentSession = null
+    const empShiftName = emp.shift_name || 'General Shift'
+    const isNightShift = empShiftName.toLowerCase().includes('night') || empShiftName.toLowerCase().includes('us ')
 
     for (const punchTime of punches) {
-      if (!currentSession || (punchTime.getTime() - currentSession.lastPunch.getTime() > GAP_THRESHOLD_MS)) {
-        // Start new session
-        const dateStr = toDateString(punchTime)
-        
+      // Calculate 'business date' for this punch
+      const effectiveTime = new Date(punchTime.getTime())
+      if (isNightShift) {
+        effectiveTime.setHours(effectiveTime.getHours() - 12)
+      }
+      const businessDateStr = toDateString(effectiveTime)
+
+      if (!currentSession || currentSession.dateStr !== businessDateStr) {
+        // Start new session using the business date
         currentSession = {
-          dateStr,
+          dateStr: businessDateStr,
           employee_id: emp.employee_id,
           employee_name: emp.employee_name,
           employee_code: emp.employee_code,
+          emp: emp,
           punches: [punchTime],
           lastPunch: punchTime
         }
         
         // Only keep sessions that start on or after cutoff
-        if (dateStr >= cutoffStr) {
-          const key = `${dateStr}_${emp.employee_id}`
+        if (businessDateStr >= cutoffStr) {
+          const key = `${businessDateStr}_${emp.employee_id}`
           grouped.set(key, currentSession)
         }
       } else {

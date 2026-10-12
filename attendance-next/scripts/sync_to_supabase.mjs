@@ -12,14 +12,14 @@ import { fileURLToPath } from 'url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-const SUPABASE_URL    = 'https://qbbzflvmmiahxldqzckp.supabase.co'
-const SUPABASE_SECRET = 'sb_secret_p7KCX0a5SFooEJByehw2kw_v5-s9Tsg'
+const SUPABASE_URL    = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://qbbzflvmmiahxldqzckp.supabase.co'
+const SUPABASE_KEY    = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_c-m2osEWNoPbzSzewmYoyg_rlwVizBA'
 const MDB_PATH        = 'C:\\eTimeTrackLite\\eTimeTrackLite1.mdb'
 const LOG_FILE        = join(__dirname, 'sync.log')
 const TEMP_PS1        = join(__dirname, '_temp_query.ps1')
 const TEMP_JSON       = join(__dirname, '_temp_data.json')
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_SECRET, {
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: false }
 })
 

@@ -15,7 +15,8 @@ export const indianHolidays = [
   { date: '2026-06-26', name: "Muharram", type: 'holiday' },
   { date: '2026-08-15', name: "Independence Day", type: 'holiday' },
   { date: '2026-08-26', name: "Eid-Milad", type: 'holiday' },
-    { date: '2026-09-14', name: "Ganesh Chaturthi", type: 'holiday' },
+  { date: '2026-09-04', name: "Janmashtami", type: 'holiday' },
+  { date: '2026-09-14', name: "Ganesh Chaturthi", type: 'holiday' },
   { date: '2026-10-02', name: "Gandhi Jayanti", type: 'holiday' },
   { date: '2026-10-20', name: "Vijayadashami (Dasara)", type: 'holiday' },
   { date: '2026-11-01', name: "Kannada Rajyothsava", type: 'holiday' },
@@ -29,5 +30,11 @@ export const getIndianHolidays = (year = new Date().getFullYear()) => {
     .map(holiday => ({
       ...holiday,
       date: `${year}${holiday.date.substring(4)}`
-    }));
+    }))
+    // Filter out holidays that fall on a Saturday (6) or Sunday (0)
+    .filter(holiday => {
+      const dateObj = new Date(holiday.date);
+      const dayOfWeek = dateObj.getDay();
+      return dayOfWeek !== 0 && dayOfWeek !== 6;
+    });
 };

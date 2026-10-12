@@ -17,14 +17,12 @@ function App() {
   const [selectedEmployee, setSelectedEmployee] = useState(null)
   const [activeTab, setActiveTab] = useState('overview')
   const [statusFilter, setStatusFilter] = useState('All')
-  const [selectedMonth, setSelectedMonth] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; })
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
+  const [selectedMonth, setSelectedMonth] = useState('All')
+  const [selectedWeek, setSelectedWeek] = useState('All')
   const [rawData, setRawData] = useState([])
   const [allEmployees, setAllEmployees] = useState([])
   const [departments, setDepartments] = useState(INITIAL_DEPARTMENTS)
   const [shifts, setShifts] = useState(INITIAL_SHIFTS)
-  const [customHolidays, setCustomHolidays] = useState([])
   const [selectedDeptFilter, setSelectedDeptFilter] = useState('ALL')
   const [viewingProfileEmp, setViewingProfileEmp] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -36,7 +34,6 @@ function App() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [showPunchRecords, setShowPunchRecords] = useState(false)
   useEffect(() => {
     if (typeof window !== 'undefined' && localStorage.getItem('inxl_auth') === 'true') {
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -100,7 +97,7 @@ function App() {
         .from('employees')
         .select('*')
       if (empError) throw empError
-
+      
       const activeEmployees = enrichEmployees(employeesData || [])
       setAllEmployees(activeEmployees)
 
@@ -113,7 +110,7 @@ function App() {
         .map(log => {
           const statusStr = log.status || (log.present ? 'Present' : 'Absent');
           const [rawStatus, shiftName] = statusStr.split('||');
-
+          
           return {
             date: log.attendance_date,
             emp_id: log.employees?.employee_code || log.employee_id,
@@ -132,7 +129,7 @@ function App() {
             holiday: log.holiday || false,
           };
         })
-
+      
       setRawData(formatted)
     } catch (err) {
       console.error('Fetch error:', err)
@@ -143,32 +140,13 @@ function App() {
   }
 
   useEffect(() => {
-    const reloadMeta = async () => {
-      const { data: dData, error: dError } = await supabase.from('departments').select('*').order('created_at', { ascending: true });
-      if (!dError && dData && dData.length > 0) setDepartments(dData);
-      else setDepartments(getStoredConfig('inxl_departments', INITIAL_DEPARTMENTS));
-
-      const { data: hData, error: hError } = await supabase.from('holidays').select('*');
-      if (!hError && hData) setCustomHolidays(hData);
-
-      const { data: sData, error: sError } = await supabase.from('shifts').select('*').order('created_at', { ascending: true });
-      if (!sError && sData && sData.length > 0) {
-        setShifts(sData.map(s => ({
-          ...s,
-          displayHours: s.display_timing,
-          graceMinutes: s.grace_period,
-          startTime: s.start_time,
-          endTime: s.end_time
-        })));
-      } else {
-        setShifts(getStoredConfig('inxl_shifts', INITIAL_SHIFTS));
-      }
+    const reloadMeta = () => {
+      const d = getStoredConfig('inxl_departments', INITIAL_DEPARTMENTS);
+      const s = getStoredConfig('inxl_shifts', INITIAL_SHIFTS);
+      setDepartments(d);
+      setShifts(s);
     };
     reloadMeta();
-    
-    const handleDataEvent = () => reloadMeta();
-    window.addEventListener('inxl_data_updated', handleDataEvent);
-    return () => window.removeEventListener('inxl_data_updated', handleDataEvent);
 
     const handleSyncEvent = () => {
       reloadMeta();
@@ -191,20 +169,20 @@ function App() {
 
   const parseDate = (dateStr) => {
     if (!dateStr) return new Date()
-
+    
     // Check if it's already in YYYY-MM-DD format (from Supabase)
     if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
       const [y, m, d] = dateStr.split('-')
       return new Date(parseInt(y), parseInt(m) - 1, parseInt(d))
     }
-
+    
     // Legacy Excel format fallback (DD-MMM-YYYY)
     const months = { 'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5, 'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11 }
     const parts = dateStr.split('-')
     if (parts.length === 3 && isNaN(parseInt(parts[1]))) {
       return new Date(parseInt(parts[2]), months[parts[1]] || 0, parseInt(parts[0]))
     }
-
+    
     return new Date(dateStr)
   }
 
@@ -237,12 +215,12 @@ function App() {
           const row = data[i]
           if (!row) continue
           for (let c of row) {
-            if (!c) continue
-            const s = String(c).trim()
-            const parts = s.split('-')
-            if (parts.length === 3 && (s.includes('202') || s.includes('-26'))) {
-              currentDate = s
-            }
+             if (!c) continue
+             const s = String(c).trim()
+             const parts = s.split('-')
+             if (parts.length === 3 && (s.includes('202') || s.includes('-26'))) {
+                 currentDate = s
+             }
           }
         }
 
@@ -272,53 +250,53 @@ function App() {
           // 1. Try to find a date in this row
           let foundDate = null
           for (let c of row) {
-            if (!c) continue
-            const s = String(c).trim()
-            const parts = s.split('-')
-            if (parts.length === 3 && (s.includes('202') || s.includes('-26'))) {
-              foundDate = s
-              break
-            }
+             if (!c) continue
+             const s = String(c).trim()
+             const parts = s.split('-')
+             if (parts.length === 3 && (s.includes('202') || s.includes('-26'))) {
+                 foundDate = s
+                 break
+             }
           }
-
+          
           if (foundDate) {
-            currentDate = foundDate
-            continue
+             currentDate = foundDate
+             continue
           }
 
           // 2. Parse employee row using the column map
           if (colMap.name !== undefined && colMap.status !== undefined) {
-            const name = String(row[colMap.name] || '').trim()
-            const emp_id = String(row[colMap.emp_id] || '').trim()
-            const status = String(row[colMap.status] || '').trim()
+              const name = String(row[colMap.name] || '').trim()
+              const emp_id = String(row[colMap.emp_id] || '').trim()
+              const status = String(row[colMap.status] || '').trim()
+              
+              if (name && name !== 'Name' && name !== 'Company:' && emp_id) {
+                  let in_time_val = colMap.in_time !== undefined ? row[colMap.in_time] : null;
+                  let out_time_val = colMap.out_time !== undefined ? row[colMap.out_time] : null;
+                  let late_by_val = colMap.late_by !== undefined ? row[colMap.late_by] : null;
+                  let early_going_by_val = colMap.early_going_by !== undefined ? row[colMap.early_going_by] : null;
 
-            if (name && name !== 'Name' && name !== 'Company:' && emp_id) {
-              let in_time_val = colMap.in_time !== undefined ? row[colMap.in_time] : null;
-              let out_time_val = colMap.out_time !== undefined ? row[colMap.out_time] : null;
-              let late_by_val = colMap.late_by !== undefined ? row[colMap.late_by] : null;
-              let early_going_by_val = colMap.early_going_by !== undefined ? row[colMap.early_going_by] : null;
-
-              parsedData.push({
-                date: currentDate,
-                emp_id: emp_id,
-                name: name,
-                shift: colMap.shift !== undefined ? row[colMap.shift] : null,
-                s_in_time: null, // Basic report doesn't have shift in/out time
-                s_out_time: null,
-                in_time: in_time_val,
-                out_time: out_time_val,
-                work_duration: colMap.work_duration !== undefined ? row[colMap.work_duration] : null,
-                overtime: colMap.overtime !== undefined ? row[colMap.overtime] : null,
-                total_duration: colMap.total_duration !== undefined ? row[colMap.total_duration] : null,
-                late_by: late_by_val,
-                early_going_by: early_going_by_val,
-                status: status,
-                punch_records: colMap.punch_records !== undefined ? row[colMap.punch_records] : null
-              })
-            }
+                  parsedData.push({
+                      date: currentDate,
+                      emp_id: emp_id,
+                      name: name,
+                      shift: colMap.shift !== undefined ? row[colMap.shift] : null,
+                      s_in_time: null, // Basic report doesn't have shift in/out time
+                      s_out_time: null,
+                      in_time: in_time_val,
+                      out_time: out_time_val,
+                      work_duration: colMap.work_duration !== undefined ? row[colMap.work_duration] : null,
+                      overtime: colMap.overtime !== undefined ? row[colMap.overtime] : null,
+                      total_duration: colMap.total_duration !== undefined ? row[colMap.total_duration] : null,
+                      late_by: late_by_val,
+                      early_going_by: early_going_by_val,
+                      status: status,
+                      punch_records: colMap.punch_records !== undefined ? row[colMap.punch_records] : null
+                  })
+              }
           }
         }
-
+        
         if (parsedData.length === 0) {
           setDebugData(data.slice(0, 30))
           alert('Could not find any attendance records in this file. Please check the format. Scroll down to see debug info.')
@@ -340,10 +318,10 @@ function App() {
     if (!rawData || rawData.length === 0) return [];
     const monthObjs = new Map();
     rawData.forEach(record => {
-      const d = parseDate(record.date);
-      const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const label = d.toLocaleDateString('default', { month: 'long', year: 'numeric' });
-      monthObjs.set(val, label);
+       const d = parseDate(record.date);
+       const val = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}`;
+       const label = d.toLocaleDateString('default', { month: 'long', year: 'numeric' });
+       monthObjs.set(val, label);
     });
     return Array.from(monthObjs.entries()).sort((a, b) => b[0].localeCompare(a[0]));
   }, [rawData]);
@@ -353,82 +331,21 @@ function App() {
     if (selectedMonth !== 'All') {
       data = data.filter(record => {
         const d = parseDate(record.date);
-        const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        const val = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}`;
         return val === selectedMonth;
       });
     }
 
-    if (startDate) {
-      const s = new Date(startDate);
-      s.setHours(0,0,0,0);
+    if (selectedWeek !== 'All') {
       data = data.filter(record => {
-        const d = parseDate(record.date);
-        d.setHours(0,0,0,0);
-        return d >= s;
+         const d = parseDate(record.date);
+         const week = Math.ceil(d.getDate() / 7);
+         return `Week ${week}` === selectedWeek;
       });
     }
-
-    if (endDate) {
-      const e = new Date(endDate);
-      e.setHours(23,59,59,999);
-      data = data.filter(record => {
-        const d = parseDate(record.date);
-        d.setHours(0,0,0,0);
-        return d <= e;
-      });
-    }
-
-    if (data.length === 0) return data;
-
-    let minDate = new Date(8640000000000000);
-    let maxDate = new Date(-8640000000000000);
-    data.forEach(r => {
-      const d = parseDate(r.date);
-      if (d < minDate) minDate = d;
-      if (d > maxDate) maxDate = d;
-    });
-
-    const formatLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-
-    const existingMap = new Set();
-    data.forEach(r => {
-      existingMap.add(`${r.emp_id}_${formatLocal(parseDate(r.date))}`);
-    });
-
-    const newData = [...data];
-    allEmployees.forEach(emp => {
-      const empId = emp.employee_code || emp.employee_id;
-      for (let d = new Date(minDate); d <= maxDate; d.setDate(d.getDate() + 1)) {
-        const dayOfWeek = d.getDay();
-        if (dayOfWeek === 0 || dayOfWeek === 6) continue;
-
-        const dateStr = formatLocal(d);
-        if (!existingMap.has(`${empId}_${dateStr}`)) {
-          newData.push({
-            date: dateStr,
-            emp_id: empId,
-            name: emp.displayName || emp.employee_name,
-            status: 'Absent',
-            in_time: '--:--',
-            out_time: '--:--',
-            total_duration: '00:00',
-            late_by: '-',
-            early_going_by: '-',
-            overtime: '-',
-            punch_records: 'No Punches',
-            shift: emp.shift_name || '-',
-            weekly_off: false,
-            holiday: false
-          });
-        }
-      }
-    });
-
-    // sort newData by date
-    newData.sort((a, b) => parseDate(b.date) - parseDate(a.date));
-
-    return newData;
-  }, [rawData, selectedMonth, startDate, endDate, allEmployees]);
+    
+    return data;
+  }, [rawData, selectedMonth, selectedWeek]);
 
   // Group data by employee
   const employeeSummaries = useMemo(() => {
@@ -478,30 +395,15 @@ function App() {
       }
 
       const emp = map.get(emp_id)
+      emp.totalDays += 1
+
       // Evaluate final status strictly but respecting leaves/holidays
       let finalStatus = 'Absent'
       let isLeaveType = false
-
-      const formatLocal = (d) => {
-        if (!d) return '';
-        const dt = new Date(d);
-        return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
-      };
       
-      const recordDateStr = formatLocal(parseDate(record.date));
-      const isCustomHoliday = customHolidays.some(h => {
-        try { return formatLocal(h.date) === recordDateStr; } catch(e) { return false; }
-      });
-      let isIndianHoliday = false;
-      try {
-        isIndianHoliday = getIndianHolidays(parseDate(record.date).getFullYear()).some(h => formatLocal(h.date) === recordDateStr);
-      } catch(e) {}
-      
-      const isHoliday = record.holiday || status.includes('Holiday') || isCustomHoliday || isIndianHoliday;
-      if (record.weekly_off || status.includes('WeeklyOff') || isHoliday) {
+      if (record.weekly_off || status.includes('WeeklyOff') || status.includes('Holiday') || record.holiday) {
         isLeaveType = true
         finalStatus = 'Leave'
-        record.status = status.includes('WeeklyOff') || record.weekly_off ? 'Weekly Off' : 'Holiday'
       }
 
       // If they punched in, they are Present (even if on leave)
@@ -547,9 +449,14 @@ function App() {
       }
       return String(a.emp_id).localeCompare(String(b.emp_id));
     });
-    // Total days is the sum of Present and Absent days (working days only, holidays/leaves are excluded unless worked)
+
+    // Make sure totalDays matches the max working days so empty employees don't say 0 days while others say 12
+    const maxWorkingDays = result.reduce((max, emp) => Math.max(max, emp.totalDays), 0)
     result.forEach(emp => {
-      emp.totalDays = emp.present + emp.absent;
+      if (emp.totalDays === 0 && maxWorkingDays > 0) {
+        emp.totalDays = maxWorkingDays
+        emp.absent = maxWorkingDays
+      }
     })
 
     return result;
@@ -559,7 +466,7 @@ function App() {
   const filteredEmployees = useMemo(() => {
     return employeeSummaries.filter(emp => {
       const matchSearch = emp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        emp.emp_id.toString().includes(searchTerm);
+                          emp.emp_id.toString().includes(searchTerm);
       const matchDept = selectedDeptFilter === 'ALL' || emp.department_name === selectedDeptFilter;
       return matchSearch && matchDept;
     });
@@ -595,39 +502,10 @@ function App() {
         'Punch Records': record.punch_records || 'No records'
       }))
 
-    const worksheet = XLSX.utils.json_to_sheet(dataForExcel, { origin: 'A4' })
-    
-    // Add custom header
-    XLSX.utils.sheet_add_aoa(worksheet, [
-      [`INXL Digital - Employee Attendance Records`],
-      [`Employee: ${activeModalEmp.name} (ID: ${activeModalEmp.emp_id}) | Period: ${dateRange || 'All Time'}`],
-      []
-    ], { origin: 'A1' });
-
-    // Set column widths
-    worksheet['!cols'] = [
-      { wch: 12 }, // Date
-      { wch: 15 }, // Status
-      { wch: 12 }, // Shift
-      { wch: 10 }, // In Time
-      { wch: 10 }, // Out Time
-      { wch: 10 }, // Late By
-      { wch: 10 }, // Early Go
-      { wch: 10 }, // OT
-      { wch: 12 }, // Total Dur
-      { wch: 40 }  // Punch Records
-    ];
-
-    worksheet['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 9 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 9 } }
-    ];
-
+    const worksheet = XLSX.utils.json_to_sheet(dataForExcel)
     const workbook = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Punch Records')
-    
-    const safeDateRange = dateRange ? dateRange.replace(/[, ]+/g, '_') : 'All_Time';
-    XLSX.writeFile(workbook, `${activeModalEmp.name.replace(/ /g, '_')}_Attendance_${safeDateRange}.xlsx`)
+    XLSX.writeFile(workbook, `${selectedEmployee.name.replace(/ /g, '_')}_Attendance.xlsx`)
   }
 
   const downloadData = () => {
@@ -644,37 +522,10 @@ function App() {
       }
     })
 
-    const worksheet = XLSX.utils.json_to_sheet(dataForExcel, { origin: 'A4' })
-
-    // Add custom headings
-    XLSX.utils.sheet_add_aoa(worksheet, [
-      ['INXL Digital - Workforce Attendance Report'],
-      [`Report Period: ${dateRange || 'All Time'}`],
-      []
-    ], { origin: 'A1' });
-
-    // Set column widths
-    worksheet['!cols'] = [
-      { wch: 10 }, // Emp ID
-      { wch: 25 }, // Employee Name
-      { wch: 12 }, // Total Days
-      { wch: 10 }, // Present
-      { wch: 10 }, // Absent
-      { wch: 15 }, // Worked Hours
-      { wch: 15 }  // Attendance %
-    ];
-
-    // Merge title cells
-    worksheet['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 6 } }
-    ];
-
+    const worksheet = XLSX.utils.json_to_sheet(dataForExcel)
     const workbook = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Attendance Report')
-    
-    const safeDateRange = dateRange ? dateRange.replace(/[, ]+/g, '_') : 'All_Time';
-    XLSX.writeFile(workbook, `INXL_Attendance_Report_${safeDateRange}.xlsx`)
+    XLSX.writeFile(workbook, 'attendance_report.xlsx')
   }
 
   const renderDashboard = () => (
@@ -882,7 +733,7 @@ function App() {
       if (record.early_going_by && record.early_going_by !== '00:00' && record.early_going_by !== '-') stat.earlyCount++
     })
     const lateLeaders = Array.from(punctuality.values()).filter(p => p.lateCount > 0).sort((a, b) => b.lateCount - a.lateCount).slice(0, 10)
-
+    
     // 3. Overtime Leaders
     const overtimeStats = new Map()
     filteredRawData.forEach(record => {
@@ -1190,14 +1041,14 @@ function App() {
       if (!maxDate || d > maxDate) maxDate = d;
     });
     if (!minDate || maxDate == null) return null;
-
+    
     const options = { year: 'numeric', month: 'short', day: 'numeric' };
     return `${minDate.toLocaleDateString(undefined, options)} - ${maxDate.toLocaleDateString(undefined, options)}`;
   }, [filteredRawData]);
 
   const handleLogin = (e) => {
     e.preventDefault();
-    if (username === 'timothy@inxl' && password === 'WIN@INXL247') {
+    if (username === 'admin' && password === 'password') {
       setIsAuthenticated(true);
       if (typeof window !== 'undefined') localStorage.setItem('inxl_auth', 'true');
       setLoginError('');
@@ -1210,37 +1061,37 @@ function App() {
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', backgroundColor: '#f4f6fb' }}>
       <div style={{ backgroundColor: 'white', padding: '2.5rem', borderRadius: '24px', boxShadow: '0 20px 40px -10px rgba(0, 0, 0, 0.05)', border: '1px solid rgba(0, 0, 0, 0.06)', width: '100%', maxWidth: '420px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <img src="https://i0.wp.com/inxldigital.com/wp-content/uploads/2021/04/cropped-inXL-LOGO-1.jpeg?resize=300%2C100&ssl=1" alt="INXL Digital Logo" style={{ maxWidth: '80%', height: 'auto', marginBottom: '1.75rem' }} />
-
+        
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#161245', color: '#90d152', width: '52px', height: '52px', borderRadius: '18px', marginBottom: '1.25rem', boxShadow: '0 4px 12px rgba(22, 18, 69, 0.2)' }}>
           <Lock size={24} />
         </div>
-
+        
         <h2 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#161245', marginBottom: '0.35rem', textAlign: 'center', letterSpacing: '-0.02em' }}>Welcome Back</h2>
         <p style={{ color: '#6b7280', marginBottom: '1.75rem', textAlign: 'center', fontSize: '0.875rem', fontWeight: 500 }}>Please sign in to access the workforce dashboard</p>
-
+        
         {loginError && (
           <div style={{ backgroundColor: '#fee2e2', color: '#b91c1c', padding: '0.75rem', borderRadius: '12px', marginBottom: '1.25rem', width: '100%', fontSize: '0.85rem', textAlign: 'center', fontWeight: 600 }}>
             {loginError}
           </div>
         )}
-
+        
         <form onSubmit={handleLogin} style={{ width: '100%' }}>
           <div style={{ marginBottom: '1rem' }}>
             <label style={{ display: 'block', color: '#374151', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Username</label>
-            <input
-              type="text"
+            <input 
+              type="text" 
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               style={{ width: '100%', padding: '0.75rem 1rem', borderRadius: '9999px', border: '1px solid #d1d5db', outline: 'none', backgroundColor: '#f9fafb', color: '#161245', fontSize: '0.9rem' }}
               placeholder="Enter your username"
             />
           </div>
-
+          
           <div style={{ marginBottom: '1.75rem' }}>
             <label style={{ display: 'block', color: '#374151', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Password</label>
             <div style={{ position: 'relative' }}>
-              <input
-                type={showPassword ? "text" : "password"}
+              <input 
+                type={showPassword ? "text" : "password"} 
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 style={{ width: '100%', padding: '0.75rem 1rem', paddingRight: '2.5rem', borderRadius: '9999px', border: '1px solid #d1d5db', outline: 'none', backgroundColor: '#f9fafb', color: '#161245', fontSize: '0.9rem' }}
@@ -1255,8 +1106,8 @@ function App() {
               </button>
             </div>
           </div>
-
-          <button
+          
+          <button 
             type="submit"
             style={{ width: '100%', backgroundColor: '#161245', color: 'white', padding: '0.8rem', borderRadius: '9999px', border: 'none', fontSize: '0.95rem', fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 4px 14px rgba(22, 18, 69, 0.2)' }}
             onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#000'; }}
@@ -1279,45 +1130,45 @@ function App() {
         <div className="sidebar-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0.5rem 0 1.5rem 0' }}>
           <img src="https://i0.wp.com/inxldigital.com/wp-content/uploads/2021/04/cropped-inXL-LOGO-1.jpeg?resize=300%2C100&ssl=1" alt="INXL Digital Logo" style={{ maxWidth: '80%', height: 'auto', maxHeight: '50px' }} />
         </div>
-
+        
         <nav className="sidebar-nav">
           <ul>
-            <li
+            <li 
               className={activeTab === 'overview' ? 'active' : ''}
               onClick={() => setActiveTab('overview')}
             >
               <LayoutDashboard size={20} />
               <span>Dashboard</span>
             </li>
-            <li
+            <li 
               className={activeTab === 'employees' ? 'active' : ''}
               onClick={() => setActiveTab('employees')}
             >
               <Users size={20} />
               <span>Employees</span>
             </li>
-            <li
+            <li 
               className={activeTab === 'timesheets' ? 'active' : ''}
               onClick={() => setActiveTab('timesheets')}
             >
               <Clock size={20} />
               <span>Attendance</span>
             </li>
-            <li
+            <li 
               className={activeTab === 'reports' ? 'active' : ''}
               onClick={() => setActiveTab('reports')}
             >
               <FileText size={20} />
               <span>Reports</span>
             </li>
-            <li
+            <li 
               className={activeTab === 'calendar' ? 'active' : ''}
               onClick={() => setActiveTab('calendar')}
             >
               <Calendar size={20} />
               <span>Calendar</span>
             </li>
-            <li
+            <li 
               className={activeTab === 'settings' ? 'active' : ''}
               onClick={() => setActiveTab('settings')}
             >
@@ -1355,121 +1206,124 @@ function App() {
 
       <main className="main-content">
         {activeTab !== 'overview' && (
-          <header className="top-bar">
-            <div>
-              <h1>
-                {activeTab === 'employees' ? 'Staff Directory & Personnel' :
-                  activeTab === 'departments' ? 'Department Organization' :
-                    activeTab === 'shifts' ? 'Shift Schedules & Timings' :
-                      activeTab === 'timesheets' ? 'Attendance' :
-                        activeTab === 'reports' ? 'Attendance Reports' :
-                          activeTab === 'settings' ? 'System Settings' : 'Workforce Overview'}
-              </h1>
-              <p className="subtitle" style={{ marginTop: '0.25rem' }}>
-                {activeTab === 'employees' ? 'Manage staff profiles, biometric IDs, and workforce assignments' :
-                  activeTab === 'departments' ? 'Company departmental units, leads, and team allocations' :
-                    activeTab === 'shifts' ? 'Office shift timings, grace periods, and work hours' :
-                      activeTab === 'timesheets' ? 'Biometric timesheet records and daily attendance logs' :
-                        activeTab === 'settings' ? 'Biometric device sync status and company configuration' :
-                          dateRange ? <span style={{ fontWeight: '500', color: '#64748b', fontSize: '0.85rem' }}>Report Period: {dateRange}</span> :
-                            'Daily biometric punch records and attendance calculations'}
-              </p>
-            </div>
-
-            {(activeTab === 'timesheets' || activeTab === 'reports') && (
-              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                {availableMonths.length > 0 && (
-                  <>
-                    <select
-                      value={selectedMonth}
-                      onChange={(e) => {
-                        setSelectedMonth(e.target.value);
-                        setStartDate(''); setEndDate(''); // Reset week when month changes
-                      }}
-                      style={{
-                        padding: '0.6rem 1rem',
-                        borderRadius: '9999px',
-                        border: '1px solid rgba(0,0,0,0.08)',
-                        backgroundColor: 'white',
-                        outline: 'none',
-                        fontSize: '0.875rem',
-                        fontWeight: '600',
-                        color: 'var(--text-primary)',
-                        cursor: 'pointer',
-                        boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
-                      }}
-                    >
-                      <option value="All">Last 90 days</option>
-                      {availableMonths.map(([val, label]) => (
-                        <option key={val} value={val}>{label}</option>
-                      ))}
-                    </select>
-                    <input
-                      type="date"
-                      value={startDate}
-                      max={endDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                      style={{
-                        padding: '0.55rem 1rem', borderRadius: '9999px', border: '1px solid rgba(0,0,0,0.08)',
-                        outline: 'none', fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-primary)'
-                      }}
-                    />
-                    <span style={{ fontSize: '0.85rem', fontWeight: '600', color: '#64748b' }}>to</span>
-                    <input
-                      type="date"
-                      value={endDate}
-                      min={startDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      style={{
-                        padding: '0.55rem 1rem', borderRadius: '9999px', border: '1px solid rgba(0,0,0,0.08)',
-                        outline: 'none', fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-primary)'
-                      }}
-                    />
-                  </>
-                )}
-                <div className="search-box">
-                  <Search size={16} className="search-icon" />
-                  <input
-                    type="text"
-                    placeholder="Search employees..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
-                </div>
-
-                <input
-                  type="file"
-                  accept=".xlsx, .xls"
-                  onChange={handleFileUpload}
-                  style={{ display: 'none' }}
-                  ref={fileInputRef}
-                />
-                <button
-                  onClick={fetchAttendanceData}
-                  disabled={loading}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.65rem 1.2rem',
-                    backgroundColor: 'white', color: '#161245', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '9999px',
-                    cursor: loading ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '0.875rem', transition: 'all 0.2s',
-                    opacity: loading ? 0.7 : 1, boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
-                  }}
-                >
-                  {loading ? 'Syncing...' : 'Refresh'}
-                </button>
-                <button
-                  onClick={downloadData}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.65rem 1.25rem',
-                    backgroundColor: '#161245', color: 'white', border: 'none', borderRadius: '9999px',
-                    cursor: 'pointer', fontWeight: '600', fontSize: '0.875rem', transition: 'background-color 0.2s',
-                    boxShadow: '0 4px 12px rgba(17,24,39,0.15)'
-                  }}
-                >
-                  <Download size={16} /> Export
-                </button>
-              </div>
+        <header className="top-bar">
+          <div>
+            <h1>
+              {activeTab === 'employees' ? 'Staff Directory & Personnel' :
+               activeTab === 'departments' ? 'Department Organization' :
+               activeTab === 'shifts' ? 'Shift Schedules & Timings' :
+               activeTab === 'timesheets' ? 'Attendance' :
+               activeTab === 'reports' ? 'Attendance Reports' :
+               activeTab === 'settings' ? 'System Settings' : 'Workforce Overview'}
+            </h1>
+            <p className="subtitle" style={{ marginTop: '0.25rem' }}>
+              {activeTab === 'employees' ? 'Manage staff profiles, biometric IDs, and workforce assignments' :
+               activeTab === 'departments' ? 'Company departmental units, leads, and team allocations' :
+               activeTab === 'shifts' ? 'Office shift timings, grace periods, and work hours' :
+               activeTab === 'timesheets' ? 'Biometric timesheet records and daily attendance logs' :
+               activeTab === 'settings' ? 'Biometric device sync status and company configuration' :
+               dateRange ? <span style={{ fontWeight: '500', color: '#64748b', fontSize: '0.85rem' }}>Report Period: {dateRange}</span> :
+               'Daily biometric punch records and attendance calculations'}
+            </p>
+          </div>
+          
+          {(activeTab === 'timesheets' || activeTab === 'reports') && (
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+            {availableMonths.length > 0 && (
+              <>
+              <select
+                value={selectedMonth}
+                onChange={(e) => {
+                  setSelectedMonth(e.target.value);
+                  setSelectedWeek('All'); // Reset week when month changes
+                }}
+                style={{
+                  padding: '0.6rem 1rem',
+                  borderRadius: '9999px',
+                  border: '1px solid rgba(0,0,0,0.08)',
+                  backgroundColor: 'white',
+                  outline: 'none',
+                  fontSize: '0.875rem',
+                  fontWeight: '600',
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
+                }}
+              >
+                <option value="All">Last 90 days</option>
+                {availableMonths.map(([val, label]) => (
+                  <option key={val} value={val}>{label}</option>
+                ))}
+              </select>
+              <select
+                value={selectedWeek}
+                onChange={(e) => setSelectedWeek(e.target.value)}
+                disabled={selectedMonth === 'All'}
+                style={{
+                  padding: '0.6rem 1rem',
+                  borderRadius: '9999px',
+                  border: '1px solid rgba(0,0,0,0.08)',
+                  backgroundColor: selectedMonth === 'All' ? '#f1f5f9' : 'white',
+                  outline: 'none',
+                  fontSize: '0.875rem',
+                  fontWeight: '600',
+                  color: selectedMonth === 'All' ? '#94a3b8' : 'var(--text-primary)',
+                  cursor: selectedMonth === 'All' ? 'not-allowed' : 'pointer',
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
+                }}
+              >
+                <option value="All">All Weeks</option>
+                <option value="Week 1">Week 1 (1st - 7th)</option>
+                <option value="Week 2">Week 2 (8th - 14th)</option>
+                <option value="Week 3">Week 3 (15th - 21st)</option>
+                <option value="Week 4">Week 4 (22nd - 28th)</option>
+                <option value="Week 5">Week 5 (29th+)</option>
+              </select>
+              </>
             )}
-          </header>
+            <div className="search-box">
+              <Search size={16} className="search-icon" />
+              <input 
+                type="text" 
+                placeholder="Search employees..." 
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            
+            <input 
+              type="file" 
+              accept=".xlsx, .xls" 
+              onChange={handleFileUpload}
+              style={{ display: 'none' }}
+              ref={fileInputRef}
+            />
+            <button 
+              onClick={fetchAttendanceData}
+              disabled={loading}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.65rem 1.2rem',
+                backgroundColor: 'white', color: '#161245', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '9999px', 
+                cursor: loading ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '0.875rem', transition: 'all 0.2s',
+                opacity: loading ? 0.7 : 1, boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
+              }}
+            >
+              {loading ? 'Syncing...' : 'Refresh'}
+            </button>
+            <button 
+              onClick={downloadData}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.65rem 1.25rem',
+                backgroundColor: '#161245', color: 'white', border: 'none', borderRadius: '9999px', 
+                cursor: 'pointer', fontWeight: '600', fontSize: '0.875rem', transition: 'background-color 0.2s',
+                boxShadow: '0 4px 12px rgba(17,24,39,0.15)'
+              }}
+            >
+              <Download size={16} /> Export
+            </button>
+          </div>
+          )}
+        </header>
         )}
 
         {activeTab === 'overview' ? (
@@ -1510,13 +1364,13 @@ function App() {
               {loading ? 'Loading live data...' : 'No Attendance Data'}
             </h2>
             <p>{loading ? 'Fetching from database...' : 'Please ensure the sync script is running on your server.'}</p>
-            <button
+            <button 
               onClick={fetchAttendanceData}
               disabled={loading}
               style={{
                 marginTop: '1.5rem',
                 display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1.5rem',
-                backgroundColor: 'var(--accent-color)', color: 'white', border: 'none',
+                backgroundColor: 'var(--accent-color)', color: 'white', border: 'none', 
                 borderRadius: '8px', cursor: loading ? 'not-allowed' : 'pointer', fontWeight: '500', transition: 'background-color 0.2s',
                 boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
                 opacity: loading ? 0.7 : 1
@@ -1533,186 +1387,183 @@ function App() {
           <CalendarView events={[
             ...getIndianHolidays(new Date().getFullYear() - 1),
             ...getIndianHolidays(new Date().getFullYear()),
-            ...getIndianHolidays(new Date().getFullYear() + 1),
-            ...customHolidays
+            ...getIndianHolidays(new Date().getFullYear() + 1)
           ]} />
         ) : null}
 
         {selectedEmployee && (() => {
           const activeModalEmp = employeeSummaries.find(e => e.emp_id === selectedEmployee.emp_id) || selectedEmployee;
           return (
-            <div className="modal-overlay" onClick={() => setSelectedEmployee(null)}>
-              <div className="modal-content" style={{ borderRadius: '24px', overflow: 'hidden', border: '1px solid rgba(0,0,0,0.08)' }} onClick={e => e.stopPropagation()}>
-                <div className="modal-header" style={{ backgroundColor: '#161245', color: 'white', borderBottom: '1px solid rgba(255,255,255,0.08)', padding: '1.5rem 2rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'white', margin: 0, letterSpacing: '-0.02em' }}>
-                      {activeModalEmp.name}
-                    </h2>
-                    <span style={{
-                      padding: '0.2rem 0.65rem', borderRadius: '9999px', fontSize: '0.725rem', fontWeight: 800,
-                      backgroundColor: '#90d152', color: '#161245'
-                    }}>
-                      ID: #{activeModalEmp.emp_id}
-                    </span>
-                  </div>
-                  <button
-                    className="close-button"
-                    onClick={() => setSelectedEmployee(null)}
-                    style={{
-                      backgroundColor: 'rgba(255,255,255,0.1)', color: '#94a3b8', border: 'none',
-                      width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center'
-                    }}
-                  >
-                    <X size={18} />
-                  </button>
+          <div className="modal-overlay" onClick={() => setSelectedEmployee(null)}>
+            <div className="modal-content" style={{ borderRadius: '24px', overflow: 'hidden', border: '1px solid rgba(0,0,0,0.08)' }} onClick={e => e.stopPropagation()}>
+              <div className="modal-header" style={{ backgroundColor: '#161245', color: 'white', borderBottom: '1px solid rgba(255,255,255,0.08)', padding: '1.5rem 2rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'white', margin: 0, letterSpacing: '-0.02em' }}>
+                    {activeModalEmp.name}
+                  </h2>
+                  <span style={{
+                    padding: '0.2rem 0.65rem', borderRadius: '9999px', fontSize: '0.725rem', fontWeight: 800,
+                    backgroundColor: '#90d152', color: '#161245'
+                  }}>
+                    ID: #{activeModalEmp.emp_id}
+                  </span>
                 </div>
+                <button
+                  className="close-button"
+                  onClick={() => setSelectedEmployee(null)}
+                  style={{
+                    backgroundColor: 'rgba(255,255,255,0.1)', color: '#94a3b8', border: 'none',
+                    width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                  }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
 
-                <div className="modal-overview" style={{ padding: '1.25rem 2rem', gap: '1rem', backgroundColor: '#f9fafb', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)' }}>
-                  <div style={{ padding: '1rem', borderRadius: '16px', backgroundColor: '#90d152', textAlign: 'center' }}>
-                    <span style={{ fontSize: '0.6875rem', color: '#161245', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Present</span>
-                    <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#161245', marginTop: '0.2rem', lineHeight: 1 }}>{activeModalEmp.present}</div>
-                  </div>
-                  <div style={{ padding: '1rem', borderRadius: '16px', backgroundColor: '#fee2e2', textAlign: 'center' }}>
-                    <span style={{ fontSize: '0.6875rem', color: '#b91c1c', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Absent</span>
-                    <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#991b1b', marginTop: '0.2rem', lineHeight: 1 }}>{activeModalEmp.absent}</div>
-                  </div>
-                  <div style={{ padding: '1rem', borderRadius: '16px', backgroundColor: '#ffffff', border: '1px solid rgba(0,0,0,0.06)', textAlign: 'center' }}>
-                    <span style={{ fontSize: '0.6875rem', color: '#6b7280', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Days</span>
-                    <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#161245', marginTop: '0.2rem', lineHeight: 1 }}>{activeModalEmp.totalDays}</div>
-                  </div>
-                  <div style={{ padding: '1rem', borderRadius: '16px', backgroundColor: '#161245', textAlign: 'center' }}>
-                    <span style={{ fontSize: '0.6875rem', color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Hours</span>
-                    <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#90d152', marginTop: '0.2rem', lineHeight: 1 }}>
-                      {Math.floor(activeModalEmp.totalMinutesWorked / 60)}h {activeModalEmp.totalMinutesWorked % 60}m
-                    </div>
-                  </div>
+              <div className="modal-overview" style={{ padding: '1.25rem 2rem', gap: '1rem', backgroundColor: '#f9fafb', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)' }}>
+                <div style={{ padding: '1rem', borderRadius: '16px', backgroundColor: '#90d152', textAlign: 'center' }}>
+                  <span style={{ fontSize: '0.6875rem', color: '#161245', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Present</span>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#161245', marginTop: '0.2rem', lineHeight: 1 }}>{activeModalEmp.present}</div>
                 </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 2rem' }}>
-                  <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#161245', margin: 0, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Detailed Punch Records</h3>
-                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                    {availableMonths.length > 0 && (
-                      <>
-                        <select
-                          value={selectedMonth}
-                          onChange={(e) => {
-                            setSelectedMonth(e.target.value);
-                            setStartDate(''); setEndDate('');
-                          }}
-                          style={{
-                            padding: '0.55rem 1rem', borderRadius: '9999px', border: '1px solid rgba(0,0,0,0.1)',
-                            backgroundColor: 'white', outline: 'none', fontSize: '0.8125rem', fontWeight: '600', color: 'var(--text-primary)', cursor: 'pointer'
-                          }}
-                        >
-                          <option value="All">All Months</option>
-                          {availableMonths.map(([val, label]) => (
-                            <option key={val} value={val}>{label}</option>
-                          ))}
-                        </select>
-                        <input
-                          type="date"
-                          value={startDate}
-                          max={endDate}
-                          onChange={(e) => setStartDate(e.target.value)}
-                          style={{ padding: '0.55rem 1rem', borderRadius: '9999px', border: '1px solid rgba(0,0,0,0.1)', outline: 'none', fontSize: '0.8125rem', fontWeight: '600', color: 'var(--text-primary)' }}
-                        />
-                        <span style={{ fontSize: '0.8125rem', fontWeight: '600', color: '#64748b' }}>to</span>
-                        <input
-                          type="date"
-                          value={endDate}
-                          min={startDate}
-                          onChange={(e) => setEndDate(e.target.value)}
-                          style={{ padding: '0.55rem 1rem', borderRadius: '9999px', border: '1px solid rgba(0,0,0,0.1)', outline: 'none', fontSize: '0.8125rem', fontWeight: '600', color: 'var(--text-primary)' }}
-                        />
-                      </>
-                    )}
-                    <select
-                      value={statusFilter}
-                      onChange={(e) => setStatusFilter(e.target.value)}
-                      style={{
-                        padding: '0.55rem 1rem',
-                        borderRadius: '9999px',
-                        border: '1px solid rgba(0,0,0,0.1)',
-                        outline: 'none',
-                        backgroundColor: 'white',
-                        color: '#161245',
-                        cursor: 'pointer',
-                        fontWeight: '600',
-                        fontSize: '0.8125rem'
-                      }}
-                    >
-                      <option value="All">Show All Days</option>
-                      <option value="Present">Present Only</option>
-                      <option value="Absent">Absent Only</option>
-                      <option value="Late">Late Arrivals</option>
-                      <option value="Overtime">Overtime</option>
-                    </select>
-
-                    <button
-                      onClick={downloadEmployeeData}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.55rem 1.25rem',
-                        backgroundColor: '#161245', color: 'white', border: 'none',
-                        borderRadius: '9999px', cursor: 'pointer', fontWeight: '700', fontSize: '0.8125rem',
-                        boxShadow: '0 4px 12px rgba(22, 18, 69, 0.15)'
-                      }}
-                    >
-                      <Download size={14} /> Export
-                    </button>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8125rem', fontWeight: '600', cursor: 'pointer', marginLeft: '0.5rem', color: '#161245' }}>
-                      <input type='checkbox' checked={showPunchRecords} onChange={(e) => setShowPunchRecords(e.target.checked)} />
-                      Show Punch Records
-                    </label>
-                  </div>
+                <div style={{ padding: '1rem', borderRadius: '16px', backgroundColor: '#fee2e2', textAlign: 'center' }}>
+                  <span style={{ fontSize: '0.6875rem', color: '#b91c1c', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Absent</span>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#991b1b', marginTop: '0.2rem', lineHeight: 1 }}>{activeModalEmp.absent}</div>
                 </div>
-
-                <div className="table-container modal-table custom-scroll">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Date</th>
-                        <th>Status</th>
-                        <th>Shift</th>
-                        <th>In Time</th>
-                        <th>Out Time</th>
-                        <th>Late By</th>
-                        <th>Early Go</th>
-                        <th>OT</th>
-                        <th>Total Dur.</th>
-                        {showPunchRecords && <th>Punch Records</th>}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {activeModalEmp.records
-                        .filter(record => {
-                          if (statusFilter === 'All') return true;
-                          if (statusFilter === 'Late') return record.late_by && record.late_by !== '00:00' && record.late_by !== '-';
-                          if (statusFilter === 'Overtime') return record.overtime && record.overtime !== '00:00' && record.overtime !== '-';
-                          return record.status === statusFilter;
-                        })
-                        .map((record, idx) => (
-                          <tr key={`${record.date}-${idx}`}>
-                            <td className="font-medium whitespace-nowrap">{record.date}</td>
-                            <td>{getStatusBadge(record.status)}</td>
-                            <td className="time-cell">{record.shift || '-'}</td>
-                            <td className="time-cell highlight-time">{record.in_time || '--:--'}</td>
-                            <td className="time-cell highlight-time">{record.out_time || '--:--'}</td>
-                            <td className="time-cell penalty">{record.late_by !== '00:00' ? record.late_by : '-'}</td>
-                            <td className="time-cell penalty">{record.early_going_by !== '00:00' ? record.early_going_by : '-'}</td>
-                            <td className="time-cell bonus">{record.overtime !== '00:00' ? record.overtime : '-'}</td>
-                            <td className="time-cell total-time">{record.total_duration || '--:--'}</td>
-                            {showPunchRecords && <td className="time-cell punch-records" title={record.punch_records}>{record.punch_records || 'No records'}</td>}
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
+                <div style={{ padding: '1rem', borderRadius: '16px', backgroundColor: '#ffffff', border: '1px solid rgba(0,0,0,0.06)', textAlign: 'center' }}>
+                  <span style={{ fontSize: '0.6875rem', color: '#6b7280', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Days</span>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#161245', marginTop: '0.2rem', lineHeight: 1 }}>{activeModalEmp.totalDays}</div>
+                </div>
+                <div style={{ padding: '1rem', borderRadius: '16px', backgroundColor: '#161245', textAlign: 'center' }}>
+                  <span style={{ fontSize: '0.6875rem', color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Hours</span>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#90d152', marginTop: '0.2rem', lineHeight: 1 }}>
+                    {Math.floor(activeModalEmp.totalMinutesWorked / 60)}h {activeModalEmp.totalMinutesWorked % 60}m
+                  </div>
                 </div>
               </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 2rem' }}>
+                <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#161245', margin: 0, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Detailed Punch Records</h3>
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                  {availableMonths.length > 0 && (
+                    <>
+                    <select
+                      value={selectedMonth}
+                      onChange={(e) => {
+                        setSelectedMonth(e.target.value);
+                        setSelectedWeek('All');
+                      }}
+                      style={{
+                        padding: '0.55rem 1rem', borderRadius: '9999px', border: '1px solid rgba(0,0,0,0.1)',
+                        backgroundColor: 'white', outline: 'none', fontSize: '0.8125rem', fontWeight: '600', color: 'var(--text-primary)', cursor: 'pointer'
+                      }}
+                    >
+                      <option value="All">All Months</option>
+                      {availableMonths.map(([val, label]) => (
+                        <option key={val} value={val}>{label}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={selectedWeek}
+                      onChange={(e) => setSelectedWeek(e.target.value)}
+                      disabled={selectedMonth === 'All'}
+                      style={{
+                        padding: '0.55rem 1rem', borderRadius: '9999px', border: '1px solid rgba(0,0,0,0.1)',
+                        backgroundColor: selectedMonth === 'All' ? '#f1f5f9' : 'white', outline: 'none', fontSize: '0.8125rem', fontWeight: '600',
+                        color: selectedMonth === 'All' ? '#94a3b8' : 'var(--text-primary)', cursor: selectedMonth === 'All' ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      <option value="All">All Weeks</option>
+                      <option value="Week 1">Week 1 (1st - 7th)</option>
+                      <option value="Week 2">Week 2 (8th - 14th)</option>
+                      <option value="Week 3">Week 3 (15th - 21st)</option>
+                      <option value="Week 4">Week 4 (22nd - 28th)</option>
+                      <option value="Week 5">Week 5 (29th+)</option>
+                    </select>
+                    </>
+                  )}
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    style={{
+                      padding: '0.55rem 1rem',
+                      borderRadius: '9999px',
+                      border: '1px solid rgba(0,0,0,0.1)',
+                      outline: 'none',
+                      backgroundColor: 'white',
+                      color: '#161245',
+                      cursor: 'pointer',
+                      fontWeight: '600',
+                      fontSize: '0.8125rem'
+                    }}
+                  >
+                    <option value="All">Show All Days</option>
+                    <option value="Present">Present Only</option>
+                    <option value="Absent">Absent Only</option>
+                    <option value="Late">Late Arrivals</option>
+                    <option value="Overtime">Overtime</option>
+                  </select>
+
+                  <button
+                    onClick={downloadEmployeeData}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.55rem 1.25rem',
+                      backgroundColor: '#161245', color: 'white', border: 'none',
+                      borderRadius: '9999px', cursor: 'pointer', fontWeight: '700', fontSize: '0.8125rem',
+                      boxShadow: '0 4px 12px rgba(22, 18, 69, 0.15)'
+                    }}
+                  >
+                    <Download size={14} /> Export
+                  </button>
+                </div>
+              </div>
+
+              <div className="table-container modal-table custom-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Status</th>
+                      <th>Shift</th>
+                      <th>In Time</th>
+                      <th>Out Time</th>
+                      <th>Late By</th>
+                      <th>Early Go</th>
+                      <th>OT</th>
+                      <th>Total Dur.</th>
+                      <th>Punch Records</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activeModalEmp.records
+                      .filter(record => {
+                        if (statusFilter === 'All') return true;
+                        if (statusFilter === 'Late') return record.late_by && record.late_by !== '00:00' && record.late_by !== '-';
+                        if (statusFilter === 'Overtime') return record.overtime && record.overtime !== '00:00' && record.overtime !== '-';
+                        return record.status === statusFilter;
+                      })
+                      .map((record, idx) => (
+                        <tr key={`${record.date}-${idx}`}>
+                          <td className="font-medium whitespace-nowrap">{record.date}</td>
+                          <td>{getStatusBadge(record.status)}</td>
+                          <td className="time-cell">{record.shift || '-'}</td>
+                          <td className="time-cell highlight-time">{record.in_time || '--:--'}</td>
+                          <td className="time-cell highlight-time">{record.out_time || '--:--'}</td>
+                          <td className="time-cell penalty">{record.late_by !== '00:00' ? record.late_by : '-'}</td>
+                          <td className="time-cell penalty">{record.early_going_by !== '00:00' ? record.early_going_by : '-'}</td>
+                          <td className="time-cell bonus">{record.overtime !== '00:00' ? record.overtime : '-'}</td>
+                          <td className="time-cell total-time">{record.total_duration || '--:--'}</td>
+                          <td className="time-cell punch-records" title={record.punch_records}>{record.punch_records || 'No records'}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
+          </div>
           );
         })()}
-        {viewingProfileEmp && (
+      {viewingProfileEmp && (
           <EmployeeProfileModal
             employee={viewingProfileEmp}
             attendanceData={rawData}
