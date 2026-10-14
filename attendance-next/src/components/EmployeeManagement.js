@@ -462,18 +462,26 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
           designation: formEmpDesignation.trim() || 'Team Member'
         };
 
-        const res = await fetch('/api/updateEmployee', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            employee_id: activeItem.employee_id,
-            updates
-          })
-        });
+        let updateSuccess = false;
+        try {
+          const res = await fetch('/api/updateEmployee', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              employee_id: activeItem.employee_id,
+              updates
+            })
+          });
+          if (res.ok) updateSuccess = true;
+        } catch {}
 
-        if (!res.ok) {
-          const errData = await res.json();
-          throw new Error(errData.error || 'Failed to update employee details.');
+        if (!updateSuccess) {
+          const { error: updErr } = await supabase
+            .from('employees')
+            .update(updates)
+            .eq('employee_id', activeItem.employee_id);
+
+          if (updErr) throw updErr;
         }
 
         // Recalculate historical logs if shift changed
