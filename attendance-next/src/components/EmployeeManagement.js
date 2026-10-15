@@ -520,22 +520,30 @@ export default function EmployeeManagement({ initialSubTab = 'staff', rawData = 
 
       const updates = { employee_name: delName, employee_code: delCode };
 
-      const res = await fetch('/api/updateEmployee', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          employee_id: activeItem.employee_id,
-          updates
-        })
-      });
+      let updateDone = false;
+      try {
+        const res = await fetch('/api/updateEmployee', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            employee_id: activeItem.employee_id,
+            updates
+          })
+        });
+        if (res.ok) updateDone = true;
+      } catch {}
 
-      if (!res.ok) {
-        const { error: delErr } = await supabase
+      if (!updateDone) {
+        const { data, error: delErr } = await supabase
           .from('employees')
           .update(updates)
-          .eq('employee_id', activeItem.employee_id);
+          .eq('employee_id', activeItem.employee_id)
+          .select();
 
         if (delErr) throw delErr;
+        if (!data || data.length === 0) {
+          throw new Error('Supabase Row-Level Security (RLS) is blocking employee updates. Please run the RLS policy in your Supabase SQL Editor.');
+        }
       }
 
       setSuccessMsg(`Employee ${activeItem.displayName} has been deactivated.`);
